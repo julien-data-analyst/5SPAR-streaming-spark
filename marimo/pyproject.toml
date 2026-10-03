@@ -1,0 +1,14 @@
+[project]
+name = "python-script"
+version = "0.1.0"
+description = "Here to help you out to containerize your Marimo notebooks"
+readme = "README.md"
+requires-python = ">=3.11" # Modify it if you use a python version under 3.11
+dependencies = [
+    "numpy",
+    "pandas",
+    "matplotlib",
+    "pyspark-client==4.1.1",
+    "marimo",
+    "plotnine" # Python notebook
+] # Some standard libairies
