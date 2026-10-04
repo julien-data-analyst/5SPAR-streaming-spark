@@ -8,33 +8,38 @@
 from mastodon import Mastodon
 from kafka import KafkaProducer
 from scripts.utils import log
+from datetime import date, datetime
 
 def backfill_tags(
     mastodon: Mastodon,
     producer: KafkaProducer,
     topic: str,
     tags: list[str],
-    limit=40,
+    limit_date: date,
+    limit=40, # Add created_date_break 
 ):
-    """Get historical toots by backfilling with a given tag to Kafka.
+    """Get historical toots by backfilling with given tags to Kafka.
 
     Args:
         mastodon (Mastodon): Mastodon client to make api calls
         producer (KafkaProducer): Kafka producer to sent data captured
         topic (str): Kafka topic nam to sent data
-        tag (str): tag used for filtering the toots
+        tags (list[str]): tag used for filtering the toots
+        limit_date (date): limit date to stop the backfill when being inferior to this date
         limit (int, optional): limit of json. Defaults to 40.
     """
 
     # Get historical data for each given tag
     for tag in tags:
-       backfill_tag(mastodon, producer, topic, tag, limit)
+       backfill_tag(mastodon, producer, topic, tag, limit_date, limit)
 
 def backfill_tag( mastodon: Mastodon,
     producer: KafkaProducer,
     topic: str,
     tag: str,
-    limit=40):
+    limit_date: date,
+    limit=40, # Add created_date_break 
+    ):
         """Get historical toots by backfilling with a given tag to Kafka.
 
     Args:
@@ -42,6 +47,7 @@ def backfill_tag( mastodon: Mastodon,
         producer (KafkaProducer): Kafka producer to sent data captured
         topic (str): Kafka topic nam to sent data
         tag (str): tag used for filtering the toots
+        limit_date (date): limit date to stop the backfill when being inferior to this date
         limit (int, optional): limit of json. Defaults to 40.
         """
         
@@ -51,7 +57,7 @@ def backfill_tag( mastodon: Mastodon,
         
         # Continue until we don't have any toots anymore
         while True:
-            
+
             # API REST calls to get toots based on the given id
             statuses = mastodon.timeline_hashtag(
                 tag,
@@ -66,12 +72,33 @@ def backfill_tag( mastodon: Mastodon,
             
             # If data then send the data for each toot with the toot_id as key message
             for status in statuses:
+                
+                #############################-
+                # Compare date with the limit to see if we are before the limit
+                #############################-
+                #print(type(status["created_at"]))
+                #print(status["created_at"])
+                toot_date = status["created_at"].date()
+                #print(f"{toot_date}<{limit_date}")
+                
+                if toot_date < limit_date:
+                    stop=True
+                    log(f"Backfill stopped because we stepped before the limit date: {limit_date}")
+                    break
+                ###############################-
+                ###############################-
+                
+                # Sent the JSON and id to Kafka
                 toot_id = str(status["id"])
 
+                message = {
+                    "stream_tag" : tag,
+                    "value" : status
+                }
                 producer.send(
                     topic,
                     key=toot_id,
-                    value=status,
+                    value=message,
                 )
 
                 sent += 1

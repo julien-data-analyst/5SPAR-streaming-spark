@@ -11,7 +11,7 @@ from kafka import KafkaProducer
 # 4) Listener Mastodon qui va capturer les tweets au topic donné de Kafka
 class MastodonListener(StreamListener):
 
-    def __init__(self, producer: KafkaProducer, topic: str):
+    def __init__(self, producer: KafkaProducer, topic: str, tag: str):
         """generate a mastodon stream listener with a kafka producer and topic
 
         Args:
@@ -22,18 +22,24 @@ class MastodonListener(StreamListener):
         self.sent = 0
         self.producer = producer
         self.topic = topic
+        self.tag = tag
         
     def on_update(self, status):
         """
         Automatically called when new toots is called
         """
 
-        toot_id = str(status["id"])
 
+        toot_id = str(status["id"])
+        message = {
+        "stream_tag": self.tag,
+        "status": status,
+        }
+        
         self.producer.send(
             self.topic,
             key=toot_id,
-            value=status,
+            value=message,
         )
 
         self.sent += 1
@@ -48,6 +54,7 @@ class MastodonListener(StreamListener):
         When interrupting a Mastodon streaming
         """
         log(f"Interrupt mastodon streaming: {err}")
+        # Register last id in a json format into folder last_toot/...
 
 def stream_tag(mastodon: Mastodon, producer: KafkaProducer, topic: str, tags: list[str], limit: int=20):
     """Listen in real time the toots associated with a hashtag
@@ -60,11 +67,10 @@ def stream_tag(mastodon: Mastodon, producer: KafkaProducer, topic: str, tags: li
         limit (int) : json toots limit by api call
     """
 
-    listener = MastodonListener(producer, topic)
-
-    log(f"Streaming toots begins for tag: #{tag}")
-
+    
     for tag in tags:
+        log(f"Streaming toots begins for tag: #{tag}")
+        listener = MastodonListener(producer, topic, tag)
         mastodon.stream_hashtag(
             tag,
             listener,
