@@ -1,0 +1,13 @@
+[project]
+name = "producer-mastodon"
+version = "0.1.0"
+description = "This python script here to stream the data from mastodon API to Kafka"
+readme = "README.md"
+requires-python = ">=3.11" # Modify it if you use a python version under 3.11
+dependencies = [
+    "numpy",
+    "pandas", 
+    "Mastodon.py",
+    "requests",
+    "kafka-python >=2.0.2,<3"
+] # Some standard libairies
