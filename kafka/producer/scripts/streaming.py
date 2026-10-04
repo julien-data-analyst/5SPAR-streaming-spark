@@ -56,7 +56,7 @@ class MastodonListener(StreamListener):
         log(f"Interrupt mastodon streaming: {err}")
         # Register last id in a json format into folder last_toot/...
 
-def stream_tag(mastodon: Mastodon, producer: KafkaProducer, topic: str, tags: list[str], limit: int=20):
+def stream_tag(mastodon: Mastodon, producer: KafkaProducer, topic: str, tags: list[str]):
     """Listen in real time the toots associated with a hashtag
 
     Args:
