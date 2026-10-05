@@ -29,11 +29,15 @@ services:
 
     volumes:
      - ./marimo/data:/data
-     
+     - ./marimo/scripts/utils:/utils/
     container_name: spark-worker
     environment:
       SPARK_NO_DAEMONIZE: "true"        # garde le process au premier plan
+      PYSPARK_PYTHON: /usr/bin/python3
 
+      PYTHONPATH: >-
+        /opt/spark/python/lib/pyspark.zip:
+        /opt/spark/python/lib/py4j-0.10.9.9-src.zip
     ports:
       - "${SPARK_CONNECT_PORT}:4040"     # Spark UI
       - "${SPARK_UI}:15002"   # Spark Connect

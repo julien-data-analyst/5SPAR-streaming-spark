@@ -40,3 +40,13 @@ def write_table(df, table: str, mode: str = "append"):
     """Write a Spark DataFrame into SQL Table (mode 'append' or 'overwrite')."""
     (df.write.mode(mode).option("truncate", "true")
        .jdbc(JDBC_URL, table, properties=JDBC_PROPS))
+
+def stop_all_streams(spark):
+    """Stop all streams active from spark connection"""
+    for _q in spark.streams.active:
+        _q.stop()
+
+def active_streams(spark):
+    """Show the active streams with the last progress"""
+    for _q in spark.streams.active:
+        print('Name : ', _q.name, 'Statut : ', _q.status, 'LastProgress : \n', _q.lastProgress.id, '\n')

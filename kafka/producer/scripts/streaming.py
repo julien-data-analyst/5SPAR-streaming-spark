@@ -72,7 +72,7 @@ def stream_tags(mastodon: Mastodon, producer: KafkaProducer, topic: str, tags: l
             build_listener(producer, topic, tag),
             run_async=True,
             reconnect_async=True,  # reconnexion automatique en cas de coupure
-            reconnect_async_wait_sec=10,
+            reconnect_async_wait_sec=60,
         )
         handles.append(handle)
     

@@ -32,4 +32,12 @@ RUN echo "=== COPY JARS ===" && \
 RUN echo "=== SPARK JARS ===" && \
     ls -lah /opt/spark/jars | grep -E "kafka|postgres"
 
+
+RUN python3 -m pip install --no-cache-dir \
+    "pandas>=2.2.0" \
+    "pyarrow>=15.0.0" \
+    "grpcio>=1.48.1" \
+    "grpcio-status >= 1.48.1" \
+    "zstandard >= 0.25.0"
+
 USER 185
