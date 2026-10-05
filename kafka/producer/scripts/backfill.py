@@ -54,9 +54,10 @@ def backfill_tag( mastodon: Mastodon,
         max_id = None
         sent = 0
         log(f"Backfill begins for #{tag}")
+        stop=False
         
         # Continue until we don't have any toots anymore
-        while True:
+        while stop==False:
 
             # API REST calls to get toots based on the given id
             statuses = mastodon.timeline_hashtag(

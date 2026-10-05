@@ -19,7 +19,7 @@ from kafka.errors import NoBrokersAvailable
 import argparse
 from mastodon import Mastodon
 from scripts.backfill import backfill_tags
-from scripts.streaming import stream_tag
+from scripts.streaming import stream_tags, stream_tag
 from datetime import date
 
 #######################################-
@@ -127,13 +127,28 @@ def main():
         )
 
     elif args.mode == "stream":
-        stream_tag(
-            mastodon,
-            producer,
-            TOPIC,
-            MASTODON_TAGS,
-        )
+        try:
+            stream_tags(
+                mastodon,
+                producer,
+                TOPIC,
+                MASTODON_TAGS,
+            )
 
+            # Keep the main process alive while the
+            # asynchronous Mastodon streams are running.
+            while True:
+                time.sleep(60)
+
+        except KeyboardInterrupt:
+            log("Stopping Mastodon streaming...")
+
+        finally:
+            producer.flush()
+            producer.close()
+            log("Producer stopped.")
+        # stream_tag(mastodon, producer, TOPIC, tag=MASTODON_TAGS[0])
+            
 
 if __name__ == "__main__":
     main()
