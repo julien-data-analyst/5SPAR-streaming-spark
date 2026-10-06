@@ -226,11 +226,22 @@ def _(mo):
 
 
 @app.cell
-def _(F, toots):
+def _(F, toots_with_stream_tags):
     offres_emplois = (
-        toots
-            .select("tweet_id", "created_at", "content_clean", F.explode("tags_list").alias("tag"))
+        toots_with_stream_tags
+            .select(
+                "tweet_id",
+                "created_at",
+                "content_clean",
+                "stream_tag",
+                F.explode("tags_list").alias("tag")
+            )
             .filter("tag LIKE '%job%' OR tag LIKE '%hiring%'")
+            .groupBy("tweet_id", "created_at", "content_clean")
+            .agg(
+                F.collect_set("stream_tag").alias("stream_tags"),
+                F.collect_set("tag").alias("tags")
+            )
     )
     return (offres_emplois,)
 
@@ -257,11 +268,9 @@ def _(mo):
 
 
 @app.cell
-def _(F, toots):
+def _(F, offres_emplois):
     nb_offres_emplois = (
-        toots
-            .select("tweet_id", "content_clean", F.explode("tags_list").alias("tag"))
-            .filter("tag LIKE '%job%' OR tag LIKE '%hiring%'")
+        offres_emplois
             .select(F.count_distinct("tweet_id").alias("effectif"))
     )
     return (nb_offres_emplois,)
@@ -298,12 +307,10 @@ def _(mo):
 
 
 @app.cell
-def _(F, toots):
+def _(F, offres_emplois):
     nb_offres_emplois_par_mois = (
-        toots
+        offres_emplois
             .withColumn("month", F.month("created_at"))
-            .select("tweet_id", "month", "content_clean", F.explode("tags_list").alias("tag"))
-            .filter("tag LIKE '%job%' OR tag LIKE '%hiring%'")
             .groupBy("month")
             .agg(F.count_distinct("tweet_id").alias("nb_tweets"))
     )
