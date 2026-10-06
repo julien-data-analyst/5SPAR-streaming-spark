@@ -6,7 +6,7 @@
 
 import time
 from typing import Callable
-
+from datetime import datetime
 from mastodon import Mastodon, CallbackStreamListener
 from kafka import KafkaProducer
 
@@ -39,16 +39,33 @@ def make_update_callback(producer: KafkaProducer, topic: str, tag: str) -> Calla
         producer.send(topic, key=toot_id, value=message)
         sent += 1
         
-        log(f"[#{tag}] Toot {toot_id} sent to Kafka (total={sent})")
+        log(f"{datetime.now()}: [#{tag}] Toot {toot_id} sent to Kafka (total={sent})")
 
     return on_update
 
+def build_listener(producer: KafkaProducer, topic: str, tag: str):
+    """Build a Mastodon callback listener for a specific hashtag.
 
-def build_listener(producer: KafkaProducer, topic: str, tag: str) -> CallbackStreamListener:
-    """Construit un listener basé sur callback pour un tag."""
+    The listener delegates received Mastodon updates to a callback
+    created by ``make_update_callback``.
+
+    Args:
+        producer: Kafka producer used to publish received toots.
+        topic: Kafka topic where the toots are published.
+        tag: Mastodon hashtag monitored by the listener.
+
+    Returns:
+        CallbackStreamListener: Configured Mastodon callback listener
+            that forwards received updates to Kafka.
+    """
     return CallbackStreamListener(
-        local_update_handler=make_update_callback(producer, topic, tag),
+        local_update_handler=make_update_callback(
+            producer,
+            topic,
+            tag,
+        ),
     )
+
 
 
 def stream_tags(mastodon: Mastodon, producer: KafkaProducer, topic: str, tags: list[str]):
@@ -66,7 +83,7 @@ def stream_tags(mastodon: Mastodon, producer: KafkaProducer, topic: str, tags: l
     
     handles = []
     for tag in tags:
-        log(f"Streaming toots begins for tag: #{tag}")
+        log(f"{datetime.now()}: Streaming toots begins for tag: #{tag}")
         handle = mastodon.stream_hashtag(
             tag,
             build_listener(producer, topic, tag),
@@ -87,7 +104,10 @@ def stream_tag(mastodon: Mastodon, producer: KafkaProducer, topic: str, tag: str
         producer (KafkaProducer): Producer Kafka to sent the data captured
         topic (str): Topic name Kafka to sent the data
         tag (str): tag used for filtering toots
-        
+    
+    Raises:
+        KeyboardInterrupt: interrupting the streaming programm
+        Exception: Other problems of Streaming that we would retry in 10 seconds (timeout)
     """
     while True:
         try:
@@ -100,9 +120,9 @@ def stream_tag(mastodon: Mastodon, producer: KafkaProducer, topic: str, tag: str
             )
             
         except KeyboardInterrupt:
-            log(f"Stopping Mastodon stream for #{tag}")
+            log(f"{datetime.now()}: Stopping Mastodon stream for #{tag}")
             break
         
         except Exception as err:
-            log(f"Mastodon stream for #{tag} disconnected: {err}. Retrying in 10 seconds...")
+            log(f"{datetime.now()}: Mastodon stream for #{tag} disconnected: {err}. Retrying in 10 seconds...")
             time.sleep(10)

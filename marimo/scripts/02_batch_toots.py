@@ -66,6 +66,7 @@ def _():
 def _(read_table, spark):
     toots_with_stream_tags = (
           read_table(spark, "mastodon_stream")
+          .dropDuplicates(["id_stream_tweet_tag"]) # Supprimer les doublons éventuelles
     )
 
     toots = (

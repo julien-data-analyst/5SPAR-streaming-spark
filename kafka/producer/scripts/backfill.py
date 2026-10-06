@@ -109,7 +109,7 @@ def backfill_tag( mastodon: Mastodon,
             max_id = str(statuses[-1]["id"])
 
             log(
-                f"Backfill #{tag}: "
+                f"{datetime.now()}: Backfill #{tag}: "
                 f"{len(statuses)} toots sent "
                 f"(total={sent})"
             )
@@ -117,6 +117,6 @@ def backfill_tag( mastodon: Mastodon,
         producer.flush()
 
         log(
-            f"Backfill finished for #{tag}: "
+            f"{datetime.now()}: Backfill finished for #{tag}: "
             f"{sent} toots sent to Kafka in total"
         )
