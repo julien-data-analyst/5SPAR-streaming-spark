@@ -38,6 +38,9 @@ services:
       PYTHONPATH: >-
         /opt/spark/python/lib/pyspark.zip:
         /opt/spark/python/lib/py4j-0.10.9.9-src.zip
+      
+      SPARK_TIMEOUT: 120
+
     ports:
       - "${SPARK_UI}:4040"     # Spark UI
       - "${SPARK_CONNECT_PORT}:15002"   # Spark Connect
@@ -81,6 +84,23 @@ services:
       - .env
     volumes:
       - ./kafka/producer/:/app/
+    stdin_open: True
+    tty: true
+    command: ["python"]
+
+  streaming:
+    build:
+      context: ./spark/streaming
+      dockerfile: Dockerfile
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION}
+    env_file:
+      - .env
+    volumes:
+      - ./marimo/data:/data
+      - ./spark/streaming/:/app/
+    environment:
+      SPARK_REMOTE: sc://spark-worker:15002 # Permet de se connecter au client
     stdin_open: True
     tty: true
     command: ["python"]
