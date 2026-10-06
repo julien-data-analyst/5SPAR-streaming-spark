@@ -39,8 +39,8 @@ services:
         /opt/spark/python/lib/pyspark.zip:
         /opt/spark/python/lib/py4j-0.10.9.9-src.zip
     ports:
-      - "${SPARK_CONNECT_PORT}:4040"     # Spark UI
-      - "${SPARK_UI}:15002"   # Spark Connect
+      - "${SPARK_UI}:4040"     # Spark UI
+      - "${SPARK_CONNECT_PORT}:15002"   # Spark Connect
     
   postgres:
     image: postgres:16

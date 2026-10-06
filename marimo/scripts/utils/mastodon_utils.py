@@ -49,4 +49,11 @@ def stop_all_streams(spark):
 def active_streams(spark):
     """Show the active streams with the last progress"""
     for _q in spark.streams.active:
-        print('Name : ', _q.name, 'Statut : ', _q.status, 'LastProgress : \n', _q.lastProgress.id, '\n')
+        print('Name : ', _q.name, 'Statut : ', _q.status, 'LastProgress : \n', _q.lastProgress, '\n')
+
+def write_result_into_console(spark_request):
+    """Show the first ten results of the request of the stream based on /tmp/checkpoint/ for results"""
+    spark_request.writeStream.format('console').outputMode('update')\
+    .option("truncate", False)\
+    .option("numRows", 10)\
+    .option('checkpointLocation', '/tmp/checkpoint').trigger(processingTime="30 seconds").start() 

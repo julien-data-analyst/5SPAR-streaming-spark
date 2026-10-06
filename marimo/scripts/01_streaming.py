@@ -44,7 +44,7 @@ def _():
     from pyspark.sql.types import (StructType, StructField, StringType, IntegerType, TimestampType, LongType,
                                    BooleanType, ArrayType)
     from utils.mastodon_utils import (get_spark, read_table, write_table,
-                                  KAFKA_BOOTSTRAP, TOPIC, CHECKPOINT_DIR, stop_all_streams, JDBC_PROPS, JDBC_URL, active_streams)
+                                  KAFKA_BOOTSTRAP, TOPIC, CHECKPOINT_DIR, stop_all_streams, JDBC_PROPS, JDBC_URL, active_streams, write_result_into_console)
 
     spark = get_spark("streaming-mastodon", shuffle_partitions=4)
     return (
@@ -63,6 +63,7 @@ def _():
         read_table,
         spark,
         stop_all_streams,
+        write_result_into_console,
     )
 
 
@@ -85,6 +86,12 @@ def _(mo):
 
 
 @app.cell
+def _(TOPIC):
+    print(TOPIC)
+    return
+
+
+@app.cell
 def _(KAFKA_BOOTSTRAP, TOPIC, spark):
     # Lecture des données en streaming sur le Kafka
     raw = spark \
@@ -100,12 +107,15 @@ def _(KAFKA_BOOTSTRAP, TOPIC, spark):
 
 
 @app.cell
-def _(raw):
+def _(raw, write_result_into_console):
     # Vérification du succès de l'opération
-    raw.writeStream.format('console').outputMode('update')\
-        .option("truncate", True)\
-        .option("numRows", 10)\
-        .option('checkpointLocation', '/tmp/checkpoint_window_counts_console').trigger(processingTime="30 seconds").start() 
+    write_result_into_console(raw)
+    return
+
+
+@app.cell
+def _(active_streams, spark):
+    active_streams(spark)
     return
 
 
@@ -213,12 +223,15 @@ def _(F, raw, schema):
 
 
 @app.cell
-def _(parsed):
+def _(parsed, write_result_into_console):
     # Vérification dans la console
-    parsed.writeStream.format('console').outputMode('update')\
-        .option("truncate", True)\
-        .option("numRows", 10)\
-        .option('checkpointLocation', '/tmp/checkpoint_window_counts_console').trigger(processingTime="30 seconds").start() 
+    write_result_into_console(parsed)
+    return
+
+
+@app.cell
+def _(active_streams, spark):
+    active_streams(spark)
     return
 
 
@@ -271,7 +284,8 @@ def _(F, parsed):
             .alias("account_statuses_count"),
         "kafka_offset",
         "kafka_partition",
-        "stream_tag"
+        "stream_tag",
+        "ingest_time"
     )
     return (parsed_select,)
 
@@ -284,12 +298,15 @@ def _(parsed_select):
 
 
 @app.cell
-def _(parsed_select):
+def _(parsed_select, write_result_into_console):
     # Vérification du succès de l'opération
-    parsed_select.writeStream.format('console').outputMode('update')\
-        .option("truncate", True)\
-        .option("numRows", 10)\
-        .option('checkpointLocation', '/tmp/checkpoint_window_counts_console').trigger(processingTime="30 seconds").start() 
+    write_result_into_console(parsed_select)
+    return
+
+
+@app.cell
+def _(active_streams, spark):
+    active_streams(spark)
     return
 
 
@@ -339,11 +356,14 @@ def _(tweets_datetime):
 
 
 @app.cell
-def _(tweets_datetime):
-    tweets_datetime.select("created_at", "account_created_at").writeStream.format('console').outputMode('update')\
-        .option("truncate", True)\
-        .option("numRows", 10)\
-        .option('checkpointLocation', '/tmp/checkpoint_window_counts_console').trigger(processingTime="30 seconds").start() 
+def _(tweets_datetime, write_result_into_console):
+    write_result_into_console(tweets_datetime.select("created_at", "account_created_at"))
+    return
+
+
+@app.cell
+def _(active_streams, spark):
+    active_streams(spark)
     return
 
 
@@ -373,11 +393,14 @@ def _(F, tweets_datetime):
 
 
 @app.cell
-def _(tweets_extract_hours_date):
-    tweets_extract_hours_date.select("created_at_day", "created_at_hour").writeStream.format('console').outputMode('update')\
-        .option("truncate", True)\
-        .option("numRows", 10)\
-        .option('checkpointLocation', '/tmp/checkpoint_window_counts_console').trigger(processingTime="30 seconds").start() 
+def _(tweets_extract_hours_date, write_result_into_console):
+    write_result_into_console(tweets_extract_hours_date.select("created_at_day", "created_at_hour"))
+    return
+
+
+@app.cell
+def _(active_streams, spark):
+    active_streams(spark)
     return
 
 
@@ -472,12 +495,9 @@ def _(F, tweets_extract_hours_date):
 
 
 @app.cell
-def _(tweets_clean_content):
+def _(tweets_clean_content, write_result_into_console):
     # Vérification du succès de l'opération dans la console
-    tweets_clean_content.select("content_clean").writeStream.format('console').outputMode('update')\
-        .option("truncate", False)\
-        .option("numRows", 10)\
-        .option('checkpointLocation', '/tmp/checkpoint_window_counts_console').trigger(processingTime="30 seconds").start() 
+    write_result_into_console(tweets_clean_content.select("content_clean"))
     return
 
 
@@ -515,10 +535,32 @@ def _(tweets_generated_id):
     return
 
 
+@app.cell
+def _(tweets_generated_id, write_result_into_console):
+    write_result_into_console(tweets_generated_id.select("id_stream_tweet_tag"))
+    return
+
+
+@app.cell
+def _(active_streams, spark):
+    active_streams(spark)
+    return
+
+
+@app.cell
+def _(spark, stop_all_streams):
+    stop_all_streams(spark)
+    return
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 2.8 Ecriture des données préparées dans la base de données PostgreSQL
+
+    On va écrire maintenant les données nettoyées dans la base de données brutes pour les traiter en batch dans l'autre partie.
+
+    L'objectif est de séparer la collecte et nettoyages des transformations beaucoup plus applicatives.
     """)
     return
 
@@ -534,14 +576,21 @@ def _(JDBC_PROPS, JDBC_URL):
 
 
 @app.cell
-def _(CHECKPOINT_DIR, tweets_generated_id, write_table_def):
+def _(write_table_def):
     # foreachBatch -> table reviews_stream (append), trigger 10 s, checkpoint dédié
     def write_raw(batch_df, batch_id):
         write_table_def(batch_df, "mastodon_stream", mode="append")
 
-    q_raw = (tweets_generated_id.writeStream.foreachBatch(write_raw)
-    .option("checkpointLocation", f"{CHECKPOINT_DIR}/raw")
-    .trigger(processingTime="10 seconds").start())
+    return (write_raw,)
+
+
+@app.cell
+def _(CHECKPOINT_DIR, tweets_generated_id, write_raw):
+    q_raw = (
+        tweets_generated_id.writeStream.foreachBatch(write_raw)
+        .option("checkpointLocation", f"{CHECKPOINT_DIR}/raw")
+        .trigger(processingTime="10 seconds").start()
+    )
     return (q_raw,)
 
 
@@ -555,6 +604,8 @@ def _(q_raw):
 def _(mo):
     mo.md(r"""
     ## 2.9 Compter le nombre de tweets window par fenêtre d'heure
+
+    Pour compter le nombre de tweets qu'on capte à l'heure, nous allons utiliser les fonctionnalités de windows pour les calculer à toutes les deux minutes le nombre de tweets par heure.
     """)
     return
 
@@ -562,57 +613,49 @@ def _(mo):
 @app.cell
 def _(write_table_def):
     def write_windows_nb_tweets(batch_df, batch_id):
-        write_table_def(batch_df, "mastodon_stream", mode="append")
+        write_table_def(batch_df, "mastodon_stream_windows", mode="append")
 
+    return (write_windows_nb_tweets,)
+
+
+@app.cell
+def _(tweets_generated_id):
+    tweets_generated_id.printSchema()
     return
 
 
 @app.cell
-def _(F, tweets_generated_id):
+def _(CHECKPOINT_DIR, F, tweets_generated_id, write_windows_nb_tweets):
     # Ecriture du windows par fenêtre d'heure
     windowed = (tweets_generated_id
-        .withWatermark("event_time", "2 minutes") # Watermark 2 minutes
+        .withWatermark("created_at", "2 minutes") # Watermark 2 minutes
         .groupBy(
-            F.window("event_time", "1 minute"),
-            F.col("category")
-        ) # Calcul en group_by par catégorie du nombre de review
+            F.window("created_at", "1 hour"),
+            F.col("created_at_hour")
+        ) # Calcul en group_by par catégorie de l'heure
         .agg(
-            F.count_distinct("tweet_id").alias("nb_tweets")
+            F.approx_count_distinct("tweet_id").alias("nb_tweets")
         )
         .select(
             F.col("window.start").alias("window_start"),
             F.col("window.end").alias("window_end"),
-            F.col("category"),
-            F.col("nb_tweets")
+            F.col("created_at_hour"),
+            F.col("nb_tweets"),
+            F.current_timestamp().alias("ingest_time_windows")
         )) # Sélection des colonnes à la fin pour l'heure et le nombre de tweets distinctes
 
-    # Résulat à 
+    # Résulat à envoyer sur le postgreSQL de windows
     q_win = (
-        windowed
-        .writeStream
-        .format("memory") 
-        .queryName("stream_window_counts")
-        .outputMode("append")
-        .option("checkpointLocation", "/tmp/checkpoint_window_counts_v2")
-        .start()
+        windowed.writeStream.foreachBatch(write_windows_nb_tweets)
+    .option("checkpointLocation", f"{CHECKPOINT_DIR}/windows_hour")
+    .trigger(processingTime="10 seconds").start()
     )
-
-    #q_win.awaitTermination()
     return q_win, windowed
 
 
 @app.cell
-def _(spark):
-    spark.sql("""
-        SELECT
-            window_start,
-            window_end,
-            category,
-            avg_rating,
-            nb_reviews
-        FROM stream_window_counts
-        ORDER BY window_start, category
-    """).show(truncate=False)
+def _(active_streams, spark):
+    active_streams(spark)
     return
 
 
@@ -625,9 +668,7 @@ def _(q_win):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ### Q2.10 – Calcul d'indicateurs basic et sauvegarde dans la base de données (time windows de 10 minutes)
-
-    Action 2: Calculate basic statistics, such as the average toot length per user or hashtag.
+    ### 2.10 – Calcul d'indicateurs basiques et sauvegarde dans la base de données (time windows de 10 minutes)
     """)
     return
 
@@ -643,24 +684,6 @@ def _(windowed):
 @app.cell
 def _(q_win_1):
     q_win_1.stop()
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    append : ➡️ Spark écrit uniquement les lignes considérées comme définitives et ne les réécrit plus.
-
-    update : ➡️ Spark écrit les lignes dont la valeur a changé depuis le dernier micro-batch.
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## 2.6 Action 2 – statistiques par hashtag (mode complete, table écrasée à chaque micro-batch)
-    """)
     return
 
 
