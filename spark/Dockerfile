@@ -40,4 +40,4 @@ RUN python3 -m pip install --no-cache-dir \
     "grpcio-status >= 1.48.1" \
     "zstandard >= 0.25.0"
 
-USER 185
+#USER 185 # Bug pour la création des checkpoints !
