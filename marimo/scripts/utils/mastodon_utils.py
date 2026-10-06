@@ -14,7 +14,7 @@ DATA_DIR = "/data"
 CHECKPOINT_DIR = f"{DATA_DIR}/checkpoints"
 MODEL_DIR = f"{DATA_DIR}/models"
 
-JDBC_URL = f"jdbc:postgresql://postgres:5432/{os.getenv("POSTGRES_DB")}"
+JDBC_URL = f"jdbc:postgresql://postgres:5432/{os.getenv('POSTGRES_DB')}"
 JDBC_PROPS = {"user": os.getenv("POSTGRES_USER"), "password": os.getenv("POSTGRES_PASSWORD"), "driver": "org.postgresql.Driver"}
 
 def get_spark(
@@ -128,7 +128,7 @@ def active_streams(spark: SparkSession) -> None:
             "Status:",
             query.status,
             "LastProgress:\n",
-            query.lastProgress,
+            query.lastProgress.get("id", None) if query.lastProgress is not None else None,
             "\n",
         )
 

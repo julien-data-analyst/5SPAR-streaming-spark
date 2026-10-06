@@ -15,7 +15,7 @@ def _(mo):
     - Filtrage par le langage "en" pour plus de facilité
     - Nettoyage du texte en HTML
     - Création d'une clé entre l'id du tweet et son tag
-    - Calcul d'indicateurs basiques (nombre tweets par minute, moyenne de la longueur du tweet par utilisateur et hashtag, )
+    - Calcul d'indicateurs basiques (nombre tweets par minute, moyenne de la longueur du tweet par hashtag, etc)
     """)
     return
 
@@ -32,7 +32,8 @@ def _(mo):
     mo.md(r"""
     # 01 – Stream processing avec Spark Structured Streaming
     Kafka `mastodon_stream` → parsing JSON → filtres / fenêtres / statistiques → PostgreSQL.
-    Le producteur doit tourner (`docker compose up -d producer` et ).
+
+    Le producteur doit tourner ('`docker compose up -d producer`' et '`docker compose -f docker-compose-dev.yml exec producer python -m scripts.main --mode stream`').
     """)
     return
 
@@ -41,8 +42,7 @@ def _(mo):
 def _():
     import time
     from pyspark.sql import functions as F
-    from pyspark.sql.types import (StructType, StructField, StringType, IntegerType, TimestampType, LongType,
-                                   BooleanType, ArrayType)
+    from pyspark.sql.types import (StructType, StructField, StringType, IntegerType, TimestampType, LongType, BooleanType, ArrayType)
     from utils.mastodon_utils import (get_spark, read_table, write_table,
                                   KAFKA_BOOTSTRAP, TOPIC, CHECKPOINT_DIR, stop_all_streams, JDBC_PROPS, JDBC_URL, active_streams, write_result_into_console)
 
@@ -60,7 +60,6 @@ def _():
         StructType,
         TOPIC,
         active_streams,
-        read_table,
         spark,
         stop_all_streams,
         write_result_into_console,
@@ -420,8 +419,6 @@ def _(mo):
     Pour ce faire, nous allons utiliser plusieurs expressions regex pour enlever :
     - les contenus entre les balises
     - les symboles apparaissant dans un script HTML
-
-    In modern sports engineering, evaluating match progress requires more than looking at static...#python #datascience #sportsanalytics #machinelearning #software #coding #development #engineering #inclusive #communityDesigning a Dynamic Momentum Index for Live Cricket Analytics in Python
     """)
     return
 
@@ -630,7 +627,7 @@ def _(CHECKPOINT_DIR, F, tweets_generated_id, write_windows_nb_tweets):
     windowed = (tweets_generated_id
         .withWatermark("created_at", "2 minutes") # Watermark 2 minutes
         .groupBy(
-            F.window("created_at", "1 hour"),
+            F.window("created_at", "1 hour"), # Par heure
             F.col("created_at_hour")
         ) # Calcul en group_by par catégorie de l'heure
         .agg(
@@ -650,7 +647,7 @@ def _(CHECKPOINT_DIR, F, tweets_generated_id, write_windows_nb_tweets):
     .option("checkpointLocation", f"{CHECKPOINT_DIR}/windows_hour")
     .trigger(processingTime="10 seconds").start()
     )
-    return q_win, windowed
+    return (q_win,)
 
 
 @app.cell
@@ -665,6 +662,12 @@ def _(q_win):
     return
 
 
+@app.cell
+def _(tweets_generated_id):
+    tweets_generated_id.printSchema()
+    return
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -674,210 +677,65 @@ def _(mo):
 
 
 @app.cell
-def _(windowed):
-    # TODO Q2.2 : même agrégation (windowed) vers le sink console en mode update, ~25 s, puis stop()
-    # (la sortie console apparaît dans : docker compose logs -f jupyter)
-    q_win_1 = windowed.writeStream.format('console').outputMode('update').option('checkpointLocation', '/tmp/checkpoint_window_counts_console').start()  # logs docker
-    return (q_win_1,)
+def _(write_table_def):
+    def write_global_statistics(batch_df, batch_id):
+        write_table_def(batch_df, "mastodon_stream_tags_statistics", mode="append")
+
+    return (write_global_statistics,)
 
 
 @app.cell
-def _(q_win_1):
-    q_win_1.stop()
-    return
-
-
-@app.function
-# Fonction utilitaire pour écrire en parquet les résultats (pour chaque batch)
-def save_batch(batch_df, batch_id):
-    print(f"========== BATCH {batch_id} ==========")
-
-    batch_df.show(truncate=False)
-
-    batch_df.write \
-        .mode("overwrite") \
-        .saveAsTable("stream_hashtag_stats")
-
-    print("========== TABLE ÉCRITE ==========")
-
-
-@app.cell
-def _(F, parsed):
-    # TODO : explode(hashtags) puis par hashtag : nb_reviews, avg_text_length, avg_rating
+def _(F, tweets_generated_id):
     hashtag_stats = (
-        parsed
-        .select("*", F.explode("hashtags").alias("tag")) # Récupération des tags 
-        .groupBy("tag") # Grouper par tag
-        .agg(F.approx_count_distinct(F.col("review_id")).alias("nb_review"), # Pas count_distinct, pas possible sous streaming !!!
-             F.avg(F.col("text_length")).alias("avg_length"),
-             F.avg(F.col("rating")).alias("avg_rating")
-            )         # Calcul des différents indicateurs
-        )
-    hashtag_stats.printSchema()
-    # TODO : mode complete + foreachBatch qui écrase stream_hashtag_stats
-    q_tags = (
-            hashtag_stats.writeStream
-            .queryName("stream_hashtag_complete")
-            .outputMode("complete")
-            .foreachBatch(save_batch)
-            .option(
-                "checkpointLocation",
-                "/tmp/checkpoint_hashtag_stats_v3"
+        tweets_generated_id
+        
+        # Récupération des tags 
+        .select("*", F.explode("tags_list").alias("tag")) 
+        .filter(F.col("tag") != F.col("stream_tag"))
+        
+        # Grouper par le stream_tag et le tag afin de faire les couples de tags    
+        .groupBy("stream_tag", "tag") 
+
+        .agg(
+            # Nombre de tweets différents
+            F.approx_count_distinct(F.col("tweet_id")).alias("nb_tweets"), 
+            # Nombre d'utilisateurs différents
+             F.approx_count_distinct(F.col("account_id")).alias("nb_users"), 
+            # Moyenne du nombre de followers sur les comptes qui ont ces deux tags
+             F.avg(F.col("account_followers_count")).alias("avg_followers_count")
             )
-            .start()
+        .withColumn("ingested_at", F.now())
+        )
+    return (hashtag_stats,)
+
+
+@app.cell
+def _(CHECKPOINT_DIR, hashtag_stats, write_global_statistics):
+    # Ecriture du résultat dans la base de données
+    query = (
+        hashtag_stats
+        .writeStream
+        .outputMode("complete")
+        .foreachBatch(write_global_statistics)
+        .option(
+            "checkpointLocation",
+            f"{CHECKPOINT_DIR}/hashtag_stats",
+        )
+        .trigger(processingTime="10 minutes")
+        .start()
     )
-    return (q_tags,)
+    return (query,)
 
 
 @app.cell
-def _(spark):
-    # En cas où la table existe déjà et qu'il faut la supprimer
-    spark.sql("DROP TABLE IF EXISTS stream_hashtag_stats")
-    # Si ça ne marche pas, la supprimer depuis le dossier concerné : 
-    # docker compose exec jupyter rm -rf /home/jovyan/work/notebooks/spark-warehouse/stream_hashtag_stats
-    # docker compose exec jupyter rm -rf /tmp/checkpoint_hashtag_stats_v2
+def _(hashtag_stats):
+    hashtag_stats.printSchema()
     return
 
 
 @app.cell
-def _(q_tags):
-    q_tags.stop()
-    return
-
-
-@app.cell
-def _(spark):
-    spark.sql("""
-        SELECT *
-        FROM stream_hashtag_stats
-    """).show(truncate=False)
-    return
-
-
-@app.cell
-def _(q_tags):
-    q_tags.lastProgress
-    return
-
-
-@app.cell
-def _(q_tags):
-    q_tags.status
-    return
-
-
-@app.cell
-def _(q_tags):
-    print(q_tags.isActive)
-    print(q_tags.exception())
-    return
-
-
-@app.cell
-def _(spark):
-    # Regarder les tables existantes
-    spark.sql("SHOW TABLES").show(truncate=False)
-    return
-
-
-@app.cell
-def _(spark):
-    spark.catalog.listTables()
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## 2.7 Supervision
-    """)
-    return
-
-
-@app.cell
-def _(spark):
-    # TODO : pour chaque requête active, afficher name, status et les indicateurs de lastProgress
-    for _q in spark.streams.active:
-        print('Name : ', _q.name, 'Statut : ', _q.status, 'LastProgress : \n', _q.lastProgress, '\n')
-    return
-
-
-@app.cell
-def _(F, read_table, spark):
-    for t in ["reviews_stream", "stream_window_counts", "stream_hashtag_stats"]:
-        print(t, read_table(spark, t).count())
-    read_table(spark, "stream_window_counts").orderBy(F.desc("window_start")).show(8)
-    #read_table(spark, "stream_hashtag_stats").orderBy(F.desc("nb_reviews")).show(8)
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ### Reprise sur checkpoint et contrôle des doublons
-    """)
-    return
-
-
-@app.cell
-def _(spark):
-    spark.streams.active
-    return
-
-
-@app.cell
-def _(spark):
-    # TODO : arrêter q_raw, attendre, la relancer avec LE MÊME checkpoint, puis compter les doublons de review_id
-    for _q in spark.streams.active:
-        _q.stop()
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    | Élément                             | Rôle                                                                             |
-    | ----------------------------------- | -------------------------------------------------------------------------------- |
-    | **Checkpoint**                      | Mémorise les offsets et l'état de la requête pour permettre la reprise           |
-    | **Reprise avec même checkpoint**    | Reprend aux offsets enregistrés                                                  |
-    | **Nouveau checkpoint**              | Considéré comme une nouvelle requête → risque de retraiter les données           |
-    | **foreachBatch**                    | Permet d'écrire chaque micro-batch dans un système externe                       |
-    | **JDBC + foreachBatch**             | Pas exactly-once automatiquement                                                 |
-    | **Sémantique pratique**             | Peut être **at-least-once**                                                      |
-    | **Pour s'approcher d'exactly-once** | Rendre l'écriture idempotente, utiliser `batch_id`, clés uniques et transactions |
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    **Laissez `q_raw` tourner** pendant les parties 3 et 4. En fin de journée :
-    ```python
-    for q in spark.streams.active: q.stop()
-    ```
-    """)
-    return
-
-
-@app.cell
-def _(spark):
-    spark.stop()
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Réponses aux questions
-    - **Q1.1** : ...
-    - **Q1.2** : ...
-    - **Q1.3** : ...
-    - **Q2.1** : ...
-    - **Q2.2** : ...
-    - **Q2.3** : ...
-    - **Q2.4** : ...
-    """)
+def _(query):
+    query.stop()
     return
 
 
