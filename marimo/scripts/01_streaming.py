@@ -32,7 +32,7 @@ def _(mo):
     mo.md(r"""
     # 01 – Stream processing avec Spark Structured Streaming
     Kafka `mastodon_stream` → parsing JSON → filtres / fenêtres / statistiques → PostgreSQL.
-    Le producteur doit tourner (`docker compose up -d producer`).
+    Le producteur doit tourner (`docker compose up -d producer` et ).
     """)
     return
 
@@ -44,7 +44,7 @@ def _():
     from pyspark.sql.types import (StructType, StructField, StringType, IntegerType, TimestampType, LongType,
                                    BooleanType, ArrayType)
     from utils.mastodon_utils import (get_spark, read_table, write_table,
-                                  KAFKA_BOOTSTRAP, TOPIC, CHECKPOINT_DIR, stop_all_streams, JDBC_PROPS, JDBC_URL)
+                                  KAFKA_BOOTSTRAP, TOPIC, CHECKPOINT_DIR, stop_all_streams, JDBC_PROPS, JDBC_URL, active_streams)
 
     spark = get_spark("streaming-mastodon", shuffle_partitions=4)
     return (
@@ -59,6 +59,7 @@ def _():
         StructField,
         StructType,
         TOPIC,
+        active_streams,
         read_table,
         spark,
         stop_all_streams,
@@ -396,6 +397,8 @@ def _(mo):
     Pour ce faire, nous allons utiliser plusieurs expressions regex pour enlever :
     - les contenus entre les balises
     - les symboles apparaissant dans un script HTML
+
+    In modern sports engineering, evaluating match progress requires more than looking at static...#python #datascience #sportsanalytics #machinelearning #software #coding #development #engineering #inclusive #communityDesigning a Dynamic Momentum Index for Live Cricket Analytics in Python
     """)
     return
 
@@ -404,8 +407,10 @@ def _(mo):
 def _(F, tweets_extract_hours_date):
     tweets_clean_content = (
         tweets_extract_hours_date
+
+        # Nettoyage du texte HTML
         .withColumn(
-            "content_clean",
+            "content_clean", # Suppression des balises HTML
             F.regexp_replace("content", "<[^>]+>", "")
         )
         .withColumn(
@@ -428,16 +433,57 @@ def _(F, tweets_extract_hours_date):
             "content_clean",
             F.trim("content_clean")
         )
+
+        # Nettoyage du texte dans son contenu en enlevant ses URLs et ses tags
+        # Suppression des URLs
+        .withColumn(
+            "content_clean",
+            F.regexp_replace(
+                "content_clean",
+                r"https?://\S+",
+                ""
+            )
+        )
+        # Suppression des hashtags
+        .withColumn(
+            "content_clean",
+            F.regexp_replace(
+                "content_clean",
+                r"#\w+",
+                ""
+            )
+        )
+
+        # Nettoyage final des espaces en trop
+        .withColumn(
+            "content_clean",
+            F.regexp_replace(
+                "content_clean",
+                r"\s+",
+                " "
+            )
+        )
+        .withColumn(
+            "content_clean",
+            F.trim("content_clean")
+        )
     )
     return (tweets_clean_content,)
 
 
 @app.cell
 def _(tweets_clean_content):
+    # Vérification du succès de l'opération dans la console
     tweets_clean_content.select("content_clean").writeStream.format('console').outputMode('update')\
-        .option("truncate", True)\
+        .option("truncate", False)\
         .option("numRows", 10)\
         .option('checkpointLocation', '/tmp/checkpoint_window_counts_console').trigger(processingTime="30 seconds").start() 
+    return
+
+
+@app.cell
+def _(active_streams, spark):
+    active_streams(spark)
     return
 
 
@@ -489,7 +535,7 @@ def _(JDBC_PROPS, JDBC_URL):
 
 @app.cell
 def _(CHECKPOINT_DIR, tweets_generated_id, write_table_def):
-    # TODO : foreachBatch -> table reviews_stream (append), trigger 10 s, checkpoint dédié
+    # foreachBatch -> table reviews_stream (append), trigger 10 s, checkpoint dédié
     def write_raw(batch_df, batch_id):
         write_table_def(batch_df, "mastodon_stream", mode="append")
 
@@ -508,37 +554,39 @@ def _(q_raw):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 2.9 Transformation 2 + Action 1 – fenêtres d'1 minute par catégorie (watermark 2 min, mode append)
-
-    Action 1: Count the number of toots per window (e.g., per minute/hour).
-    Action 2: Calculate basic statistics, such as the average toot length per user or hashtag.
+    ## 2.9 Compter le nombre de tweets window par fenêtre d'heure
     """)
     return
 
 
 @app.cell
-def _(F, parsed):
-    # TODO : fenêtre fixe d'1 minute par catégorie, watermark 2 minutes, count + note moyenne
-    #        colonnes finales : window_start, window_end, category, nb_reviews, avg_rating
-    windowed = (parsed
+def _(write_table_def):
+    def write_windows_nb_tweets(batch_df, batch_id):
+        write_table_def(batch_df, "mastodon_stream", mode="append")
+
+    return
+
+
+@app.cell
+def _(F, tweets_generated_id):
+    # Ecriture du windows par fenêtre d'heure
+    windowed = (tweets_generated_id
         .withWatermark("event_time", "2 minutes") # Watermark 2 minutes
         .groupBy(
             F.window("event_time", "1 minute"),
             F.col("category")
         ) # Calcul en group_by par catégorie du nombre de review
         .agg(
-            F.count("*").alias("nb_reviews"),
-            F.avg("rating").alias("avg_rating")
+            F.count_distinct("tweet_id").alias("nb_tweets")
         )
         .select(
             F.col("window.start").alias("window_start"),
             F.col("window.end").alias("window_end"),
             F.col("category"),
-            F.col("nb_reviews"),
-            F.col("avg_rating")
-        )) # Sélection des colonnes à la fin des calculs avec les informations du windows (de quelle date à telle date il a fait le calcul)
+            F.col("nb_tweets")
+        )) # Sélection des colonnes à la fin pour l'heure et le nombre de tweets distinctes
 
-    # TODO : écriture en mode append dans stream_window_counts (foreachBatch + checkpoint dédié)
+    # Résulat à 
     q_win = (
         windowed
         .writeStream
@@ -577,7 +625,9 @@ def _(q_win):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ### Q2.2 – même agrégation en mode `update` vers la console (debug)
+    ### Q2.10 – Calcul d'indicateurs basic et sauvegarde dans la base de données (time windows de 10 minutes)
+
+    Action 2: Calculate basic statistics, such as the average toot length per user or hashtag.
     """)
     return
 
