@@ -1,14 +1,20 @@
-"""
-MastodonStream - get streaming/historical data from the mastodon API
+""" Mastodon producer - Get streaming or historical data from the Mastodon API. 
 
-envars :
-  KAFKA_BOOTSTRAP  (default kafka:9092)
-  TOPIC            (défaut reviews_stream)
+The producer supports two execution modes: 
+- ``stream``: continuously consume new toots from Mastodon streams. 
+- ``backfill``: retrieve historical toots up to a given date. 
 
-each message :
-  key   = id (ensures the order of tweets based on this ID and uses it to filter new tweets)
-  value = JSON of the toots contents
+Environment variables: 
+KAFKA_BOOTSTRAP: Kafka bootstrap server address. Defaults to ``kafka:9092``. 
+TOPIC: Kafka topic used to publish Mastodon toots. Defaults to ``mastodon_stream``. 
+MASTODON_URL: Mastodon instance URL. Defaults to ``https://mastodon.social``. 
+MASTODON_ACCESS_TOKEN: Access token used to authenticate against the Mastodon API. 
+This variable is required. MASTODON_TAGS: Comma-separated list of hashtags to monitor. 
+Defaults to ``datascience``. 
+Kafka messages: key: Mastodon toot ID, encoded as a UTF-8 string. value: JSON representation of the toot contents. 
+The toot ID is used as the Kafka message key to preserve ordering and facilitate the identification of new records. 
 """
+
 import json
 import os
 import time
@@ -19,7 +25,7 @@ from kafka.errors import NoBrokersAvailable
 import argparse
 from mastodon import Mastodon
 from scripts.backfill import backfill_tags
-from scripts.streaming import stream_tags, stream_tag
+from scripts.streaming import stream_tags
 from datetime import date
 
 #######################################-
@@ -46,6 +52,21 @@ MASTODON_TAGS = [
 
 ## Get args passed for mode streaming or backfill
 def parse_args():
+    """Parse and validate command-line arguments. 
+    
+    The producer can operate in either streaming or backfill mode. 
+    The ``--until`` argument defines the maximum date to retrieve when running in backfill mode. 
+    
+    Returns: 
+        argparse.Namespace: 
+            Parsed command-line arguments containing: 
+                - ``mode``: Producer execution mode (``stream`` or ``backfill``). 
+                - ``until``: Maximum date used for backfill. 
+                
+    Raises: SystemExit: 
+        If the provided command-line arguments are invalid. 
+    """
+    
     parser = argparse.ArgumentParser(
         description="Producer Mastodon to Kafka"
     )
@@ -76,6 +97,21 @@ def parse_args():
 # For backfill define a date min for stopping backfill (created_date : 2026-01-01T00:00:00.000Z)
 # For streaming use of maximum id conserved when doing a backfill or streaming (env vars to modify)
 def main():
+    """Run the Mastodon producer. 
+    
+    This function initializes the Kafka administrator client, waits for Kafka and the target topic to become available, creates the Kafka producer, 
+    connects to the Mastodon API, and starts the requested producer mode. 
+    
+    In ``backfill`` mode, historical toots are retrieved until the date specified by ``--until``. 
+    In ``stream`` mode, the producer continuously consumes new toots from the configured Mastodon hashtags. 
+    
+    The function also handles graceful shutdown of the Kafka producer when the streaming process is interrupted. 
+    
+    Raises: 
+        KeyError: If ``MASTODON_ACCESS_TOKEN`` is not defined. 
+        KeyboardInterrupt: If the producer is interrupted during startup or execution. 
+    """
+    
     args = parse_args()
     
     # 1) Wait for kafka to be available
