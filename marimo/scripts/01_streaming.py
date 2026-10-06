@@ -21,7 +21,7 @@ def _(mo):
 
 
 @app.cell
-def _():
+def import_marimo():
     import marimo as mo
 
     return (mo,)
@@ -39,7 +39,7 @@ def _(mo):
 
 
 @app.cell
-def _():
+def load_spark():
     import time
     from pyspark.sql import functions as F
     from pyspark.sql.types import (StructType, StructField, StringType, IntegerType, TimestampType, LongType, BooleanType, ArrayType)
@@ -91,7 +91,7 @@ def _(TOPIC):
 
 
 @app.cell
-def _(KAFKA_BOOTSTRAP, TOPIC, spark):
+def read_kafka(KAFKA_BOOTSTRAP, TOPIC, spark):
     # Lecture des données en streaming sur le Kafka
     raw = spark \
       .readStream \
@@ -170,7 +170,7 @@ def _(mo):
 
 
 @app.cell
-def _(ArrayType, LongType, StringType, StructField, StructType):
+def spark_schema(ArrayType, LongType, StringType, StructField, StructType):
     # Le schéma d'un JSON tag où on veut juste extraire son nom
     tag_schema = StructType([
         StructField("name", StringType(), True),
@@ -206,7 +206,7 @@ def _(ArrayType, LongType, StringType, StructField, StructType):
 
 
 @app.cell
-def _(F, raw, schema):
+def parse_json(F, raw, schema):
     # Application de l'extraction du json et garder les informations de gestion de kafka avec offset et partition
     parsed = (
         raw.withColumn("value", F.col("value").cast("string"))
@@ -249,7 +249,7 @@ def _(mo):
 
 
 @app.cell
-def _(F, parsed):
+def select_parsed(F, parsed):
     # Sélection des éléments dans le StructType de value du tweet
     parsed_select = parsed.select(
         F.col("value.id").alias("tweet_id"),
@@ -324,7 +324,7 @@ def _(mo):
 
 
 @app.cell
-def _(parsed_select):
+def filter_en(parsed_select):
     # Filtrage des tweets qui sont en anglais uniquement
     tweets_en = parsed_select.filter("language = 'en'")
     return (tweets_en,)
@@ -339,7 +339,7 @@ def _(mo):
 
 
 @app.cell
-def _(F, tweets_en):
+def convert_datetime(F, tweets_en):
     tweets_datetime = tweets_en.withColumns(
         {"created_at" : F.to_timestamp("created_at"),
         "account_created_at" : F.to_timestamp("account_created_at"),
@@ -381,7 +381,7 @@ def _(mo):
 
 
 @app.cell
-def _(F, tweets_datetime):
+def extract_hour_day(F, tweets_datetime):
     tweets_extract_hours_date = tweets_datetime.withColumns(
         {
             "created_at_day" : F.to_date("created_at"),
@@ -424,7 +424,7 @@ def _(mo):
 
 
 @app.cell
-def _(F, tweets_extract_hours_date):
+def clean_content(F, tweets_extract_hours_date):
     tweets_clean_content = (
         tweets_extract_hours_date
 
@@ -521,7 +521,7 @@ def _(mo):
 
 
 @app.cell
-def _(F, tweets_clean_content):
+def create_id_tweet_tag(F, tweets_clean_content):
     tweets_generated_id = tweets_clean_content.withColumn("id_stream_tweet_tag", F.concat("tweet_id", "stream_tag"))
     return (tweets_generated_id,)
 
@@ -563,7 +563,7 @@ def _(mo):
 
 
 @app.cell
-def _(JDBC_PROPS, JDBC_URL):
+def define_write_table(JDBC_PROPS, JDBC_URL):
     def write_table_def(df, table: str, mode: str = "append"):
         """Write a Spark DataFrame into SQL Table (mode 'append' or 'overwrite')."""
         (df.write.mode(mode).option("truncate", "true")
@@ -573,7 +573,7 @@ def _(JDBC_PROPS, JDBC_URL):
 
 
 @app.cell
-def _(write_table_def):
+def write_raw_data(write_table_def):
     # foreachBatch -> table reviews_stream (append), trigger 10 s, checkpoint dédié
     def write_raw(batch_df, batch_id):
         write_table_def(batch_df, "mastodon_stream", mode="append")
@@ -737,7 +737,6 @@ def _(hashtag_stats):
 def _(query):
     query.stop()
     return
-
 
 if __name__ == "__main__":
     app.run()
