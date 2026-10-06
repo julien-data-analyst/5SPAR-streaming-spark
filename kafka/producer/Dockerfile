@@ -46,4 +46,4 @@ COPY --from=builder /app/scripts ./scripts
 ENV PYTHONUNBUFFERED=1
 
 # Command to start the notebook server when the container runs
-CMD ["python", "./scripts/main.py"]
+CMD ["python", "-m", "scripts.main", "--mode", "stream"]
