@@ -78,14 +78,14 @@ Par défaut, le backfill remonte jusqu'à la date :
 En environnement de développement :
 
 ```bash
-docker compose -f docker-compose-dev.yml exec python \
+docker compose -f docker-compose-dev.yml exec producer \
   python -m scripts.main --mode backfill
 ```
 
 En environnement de production :
 
 ```bash
-docker compose -f docker-compose-prod.yml exec python \
+docker compose -f docker-compose-prod.yml exec producer \
   python -m scripts.main --mode backfill
 ```
 
@@ -102,7 +102,7 @@ La date limite peut être modifiée avec l'argument `--until`, au format `YYYY-M
 Exemple :
 
 ```bash
-docker compose -f docker-compose-dev.yml exec python \
+docker compose -f docker-compose-dev.yml exec producer \
   python -m scripts.main \
   --mode backfill \
   --until 2025-01-01
@@ -119,14 +119,14 @@ Le mode **streaming** permet de récupérer les nouveaux toots en temps réel po
 #### Environnement de développement
 
 ```bash
-docker compose -f docker-compose-dev.yml exec python \
+docker compose -f docker-compose-dev.yml exec producer \
   python -m scripts.main --mode stream
 ```
 
 #### Environnement de production
 
 ```bash
-docker compose -f docker-compose-prod.yml exec python \
+docker compose -f docker-compose-prod.yml exec producer \
   python -m scripts.main --mode stream
 ```
 
@@ -386,7 +386,7 @@ Pour vérifier que toute la chaîne fonctionne, il est possible d'utiliser plusi
 ### Terminal 1 — Producer Mastodon
 
 ```bash
-docker compose -f docker-compose-dev.yml exec python \
+docker compose -f docker-compose-dev.yml exec producer \
   python -m scripts.main --mode stream
 ```
 
