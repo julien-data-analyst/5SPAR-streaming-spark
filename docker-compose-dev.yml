@@ -99,6 +99,7 @@ services:
     volumes:
       - ./marimo/data:/data
       - ./spark/streaming/:/app/
+    container_name: streaming_spark
     environment:
       SPARK_REMOTE: sc://spark-worker:15002 # Permet de se connecter au client
     stdin_open: True
