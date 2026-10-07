@@ -37,7 +37,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # Analyse statistique sur les tweets et leur contenu
+    # Analyse statistique sur les tweets
     """)
     return
 
@@ -58,7 +58,7 @@ def _():
     from utils.mastodon_utils import (get_spark, read_table, write_table,
                                   KAFKA_BOOTSTRAP, TOPIC, CHECKPOINT_DIR, stop_all_streams, JDBC_PROPS, JDBC_URL, active_streams, write_result_into_console)
 
-    spark = get_spark("streaming-mastodon", shuffle_partitions=4)
+    spark = get_spark("batch-tweets-mastodon", shuffle_partitions=4)
     return F, read_table, spark, write_table
 
 
@@ -377,14 +377,14 @@ def _(F, typic_day_toots):
         F.expr("percentile(nb_tweets, 0.50)").alias("mediane_nb_tweets"),
         F.expr("percentile(nb_tweets, 0.75)").alias("Q3_nb_tweets"),
         F.stddev("nb_tweets").alias("ecart_type_nb_tweets"),
-        
+    
         # Calcul des indicateurs de statistique pour le nombre d'offre dans une journée
         F.mean("nb_tweets_offre").alias("moyenne_nb_tweets_offre"),
         F.expr("percentile(nb_tweets_offre, 0.25)").alias("Q1_nb_tweets_offre"),
         F.expr("percentile(nb_tweets_offre, 0.50)").alias("mediane_nb_tweets_offre"),
         F.expr("percentile(nb_tweets_offre, 0.75)").alias("Q3_nb_tweets_offre"),
         F.stddev("nb_tweets_offre").alias("ecart_type_nb_tweets_offre")
-    
+
     )
     return (daily_tweets_stats,)
 
@@ -458,6 +458,18 @@ def _(stream_tag_effectif, write_table):
 def _():
     # Arrêt de la session
     #spark.stop()
+    return
+
+
+@app.cell
+def _(toots_with_stream_tags):
+    toots_with_stream_tags.show()
+    return
+
+
+@app.cell
+def _(spark):
+    spark.stop()
     return
 
 
