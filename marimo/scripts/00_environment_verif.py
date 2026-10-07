@@ -140,6 +140,7 @@ def _(spark):
         .trigger(processingTime="5 seconds")
         .start()
     )
+    print("OK - Batch is working with python worker.")
     return
 
 
