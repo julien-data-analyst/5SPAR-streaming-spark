@@ -248,16 +248,90 @@ flowchart TD
     I --> V
 ```
 
-## Légende
+## ⚠️ Spark Structured Streaming : backfill historique et retard de consommation Kafka
 
-| Étape | Composant | Rôle |
-|---|---|---|
-| 1 | API Mastodon | Source des publications collectées selon les stream tags ciblés. |
-| 2 | Producer Python | Collecte les publications, les sérialise au format JSON et les publie dans Kafka avec `toot_id` comme clé. |
-| 2 | Kafka | Assure le découplage entre ingestion et traitement, conserve les messages selon sa configuration et distribue les données entre les partitions du topic. |
-| 3 | Spark Structured Streaming | Consomme les messages Kafka, interprète le JSON, nettoie les données et calcule des statistiques temporelles sur les hashtags. |
-| 3 | Fenêtres et watermark | Regroupe les données sur des fenêtres d'une heure et définit une tolérance de deux minutes pour les événements tardifs, selon la configuration du traitement. |
-| 4 | PostgreSQL | Stocke les données nettoyées, les statistiques du flux et les données historiques utilisées pour les analyses. |
-| 5 | Spark batch | Réalise les jointures, les agrégations et les transformations nécessaires à l'analyse approfondie. |
-| 5 | Spark MLlib / Python | Prépare les variables, entraîne les modèles et effectue les prédictions selon les besoins du projet. |
-| 6 | Visualisations | Présente les statistiques et les résultats des modèles sous forme de graphiques et de tableaux de bord. |
+### 1. Contexte du problème
+
+Le pipeline utilise Apache Kafka comme source de données et Spark Structured Streaming pour traiter les messages du topic `mastodon_stream`.
+
+Le topic contient deux catégories de messages :
+- Les publications historiques injectées lors du backfill.
+- Les nouvelles publications reçues en temps réel.
+
+Ces deux flux sont stockés dans le même topic Kafka.
+
+La lecture Kafka est configurée avec les paramètres suivants :
+
+\```python
+.option("startingOffsets", "earliest")
+.option("maxOffsetsPerTrigger", 500)
+\```
+
+Certaines requêtes de streaming utilisent également un déclenchement périodique :
+
+\```python
+.trigger(processingTime="10 seconds")
+\```
+
+Lorsqu'une requête démarre sans checkpoint existant, `startingOffsets = earliest`
+lui permet de commencer à lire depuis le plus ancien offset disponible dans Kafka.
+Lorsqu'un checkpoint existe, Spark reprend normalement à partir de la progression
+enregistrée dans ce checkpoint.
+
+Si Spark traite les messages moins rapidement que Kafka n'en reçoit, le retard
+de consommation augmente. Les messages en temps réel restent alors dans Kafka
+en attendant leur traitement. Cela peut-être provoqué à cause du backfill.
+
+Il faudra donc attendre un peu avant de pouvoir observer les données en temps réelS.
+
+Les symptômes observés dans les logs sont notamment :
+
+- `numInputRows` limité à 500 lignes par micro-batch.
+- Un décalage entre `endOffset` et `latestOffset`.
+- Des messages `Streaming query has been idle and waiting for new data more than 10000 ms`.
+- Des messages `StateStore ... Unloaded` lors de la gestion de l'état des agrégations.
+
+Ces messages ne signifient pas nécessairement que Spark est bloqué.
+Ils doivent être interprétés avec les offsets Kafka et les métriques de progression
+de chaque requête.
+
+### 3. Exemple de progression observée
+
+Un premier relevé a fourni les valeurs suivantes :
+
+| Indicateur | Première mesure |
+|---|---:|
+| Batch ID | 7 |
+| Nombre de lignes traitées | 500 |
+| Durée du batch | 1 136 ms |
+| Start offset | 3 040 |
+| End offset | 3 540 |
+| Latest offset | 5 818 |
+| Retard estimé | 2 278 offsets |
+
+Un relevé ultérieur a fourni :
+
+| Indicateur | Deuxième mesure |
+|---|---:|
+| Batch ID | 8 |
+| Nombre de lignes traitées | 500 |
+| Durée du batch | 1 282 ms |
+| Start offset | 3 540 |
+| End offset | 4 040 |
+| Latest offset | 5 818 |
+| Retard estimé | 1 778 offsets |
+
+Le retard est passé de 2 278 à 1 778 offsets.
+
+Cela montre que Spark a progressé dans Kafka pendant cette période, alors que
+le dernier offset disponible est resté stable.
+
+Ce qui est logique car il a très peu de nouvelles données entrantes capturées dans le mode
+streaming du `producer`.
+
+On peut rester sur cette situation mais il faudra regarder les logs de spark afin de voir 
+au niveau des offsets où est-ce qu'il en est.
+
+```bash
+docker compose -f docker-compose-dev.yml logs -f spark
+```
