@@ -32,6 +32,14 @@ def _():
     from pyspark.sql import functions as F
     from pyspark.sql.types import (StructType, StructField, StringType, IntegerType, BooleanType, TimestampType, ArrayType)
     from utils.mastodon_utils import get_spark, read_table, write_table, JDBC_URL, JDBC_PROPS, DATA_DIR
+    # Visualisation graphique de la matrice de confusion
+    from plotnine import (
+        ggplot, aes, geom_tile, geom_text,
+        labs, theme_minimal, theme,
+        geom_col, facet_wrap,
+        element_text, scale_fill_gradient
+    )
+
 
     spark = get_spark("03-ml")
     return (
@@ -40,8 +48,20 @@ def _():
         StringType,
         StructField,
         StructType,
+        aes,
+        element_text,
+        facet_wrap,
+        geom_col,
+        geom_text,
+        geom_tile,
+        ggplot,
+        labs,
         read_table,
+        scale_fill_gradient,
         spark,
+        theme,
+        theme_minimal,
+        write_table,
     )
 
 
@@ -627,14 +647,19 @@ def _(confusion_spark_prct):
 
 
 @app.cell
-def _(confusion_pd, pd):
-    # Visualisation graphique de la matrice de confusion
-    from plotnine import (
-        ggplot, aes, geom_tile, geom_text,
-        labs, theme_minimal, theme,
-        element_text, scale_fill_gradient
-    )
-
+def _(
+    aes,
+    confusion_pd,
+    element_text,
+    geom_text,
+    geom_tile,
+    ggplot,
+    labs,
+    pd,
+    scale_fill_gradient,
+    theme,
+    theme_minimal,
+):
     # Ordonner les catégories pour faciliter la lecture
     confusion_pd["Réel"] = pd.Categorical(
         confusion_pd["Réel"],
@@ -688,6 +713,18 @@ def _(confusion_pd, pd):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ### Commentaire :
+
+    Nous observons via cette matrice qu'il arrive à mieux prédire les textes avec un sentiment négatif que ceux qui ont un sentiment positif.
+
+    Le modèle devra être encore à retravailler en ajoutant peut-être un plus gros volume de données pour l'entraînement permettrait d'améliorer le modèle et changer peut-être ses paramètres.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     # 1.5 Sauvegarde du modèle résultant
     """)
     return
@@ -728,7 +765,7 @@ def _(MODEL_PATH_FILE, PipelineModel):
     sentiment_model = PipelineModel.load(MODEL_PATH_FILE)
 
     print("Modèle de sentiment rechargé avec succès.")
-    return
+    return (sentiment_model,)
 
 
 @app.cell(hide_code=True)
@@ -753,7 +790,373 @@ def _(mo):
 
 @app.cell
 def _(read_table, spark):
-    read_table(spark, "")
+    tweets_data = read_table(spark, "mastodon_stream")
+    return (tweets_data,)
+
+
+@app.cell
+def _(tweets_data):
+    # Vérification du succès de l'opération
+    tweets_data.show()
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Dernier nettoyage du texte en enlevant les symboles
+
+    Cela permets d'éviter de fausser les prédictions du modèles vu qu'il n'a pas été entrainé avec ces caractères spécifiques.
+    """)
+    return
+
+
+@app.cell
+def _(F, tweets_data):
+    tweets_data_clean = tweets_data.withColumn(
+        "content_clean",
+        F.trim(
+            F.regexp_replace(
+                F.regexp_replace(
+                    F.col("content_clean"),
+                    r"[^a-zA-ZÀ-ÿ0-9\s]",
+                    ""
+                ),
+                r"\s+",
+                " "
+            )
+        )
+    )
+    return (tweets_data_clean,)
+
+
+@app.cell
+def _(tweets_data_clean):
+    # Vérification du succès de l'opération
+    tweets_data_clean.show()
+    return
+
+
+@app.cell
+def _(tweets_data_clean):
+    # Sélection des colonnes pour n'en garder ce qu'on a besoin
+    tweets_data_select = tweets_data_clean.select("tweet_id", "created_at", "stream_tag", "tags_list", "account_username", "content_clean")
+    return (tweets_data_select,)
+
+
+@app.cell
+def _(tweets_data_select):
+    tweets_data_select.show()
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Filtrage des tweets qui ne sont pas des offres et déduplication des tweets
+
+    Dans cette partie, nous allons enlever les tweets correspondant à des offres qui n'ont pas d'intérêt ici à être utilisé pour l'analyse de sentiment.
+
+    De plus, nous allons ajouter une déduplication des tweets en groupant en une liste de tags les tags de streaming utilisés.
+    """)
+    return
+
+
+@app.cell
+def _(F, tweets_data_select):
+    # Identifier les tweets contenant des tags d'offres
+    tweets_with_jobs = (
+        tweets_data_select
+        .filter(
+            F.expr("""
+                exists(tags_list, tag ->
+                    tag LIKE '%job%' OR tag LIKE '%hiring%'
+                )
+            """)
+        )
+        .select("tweet_id")
+        .distinct()
+    )
+    return (tweets_with_jobs,)
+
+
+@app.cell
+def _(tweets_with_jobs):
+    tweets_with_jobs.show()
+    return
+
+
+@app.cell
+def _(F, tweets_data_select, tweets_with_jobs):
+
+    # Conserver uniquement les tweets sans tags d'offres
+    tweets_without_jobs = (
+        tweets_data_select
+        .join(tweets_with_jobs, on="tweet_id", how="left_anti")
+        .select(
+            "tweet_id",
+            "created_at",
+            "content_clean",
+            "account_username",
+            "stream_tag"
+        )
+        .groupBy("tweet_id", "created_at", "content_clean", "account_username")
+        .agg(
+            F.collect_set("stream_tag").alias("stream_tags")
+        )
+    )
+    return (tweets_without_jobs,)
+
+
+@app.cell
+def _(tweets_without_jobs):
+    # Vérification du succès de l'opération
+    tweets_without_jobs.show()
+    return
+
+
+@app.cell
+def _(F, tweets_without_jobs):
+    # Vérification qu'il n'y a pas de doublons
+    tweets_without_jobs.groupBy("tweet_id").agg(F.count("tweet_id").alias("nb_tweet")).filter("nb_tweet > 1").show()
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Application du modèle et sauvegarde des résultats
+
+    Maintenant que les données ont été nettoyées puis aggrégées, nous pouvons appliquer maintenant le modèle.
+    """)
+    return
+
+
+@app.cell
+def _(F, sentiment_model, tweets_without_jobs):
+    # Appliquer le modèle
+    tweets_with_prediction = (
+        sentiment_model
+            # Application du modèle
+            .transform(tweets_without_jobs)
+            # Sélection des colonnes
+            .select("tweet_id", "created_at", 
+                    "content_clean", "prediction", 
+                   "account_username", "stream_tags")
+            .withColumn(
+                "prediction",
+                F.when(F.col("prediction") == 1.0, "Positif")
+                .when(F.col("prediction") == 0.0, "Négatif")
+                .otherwise("inconnu")
+            )
+    )
+    return (tweets_with_prediction,)
+
+
+@app.cell
+def _(tweets_with_prediction):
+    # Vérification du résultat
+    tweets_with_prediction.show()
+    return
+
+
+@app.cell
+def _(tweets_with_prediction, write_table):
+    # Sauvegarde des résultats dans une table SQL
+    write_table(tweets_with_prediction, "mastodon_tweets_sentiment", mode="overwrite")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Visualisation graphique des résultats
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Répartition des tweets selon le sentiment
+    """)
+    return
+
+
+@app.cell
+def _(F, tweets_with_prediction):
+    # Agréger dans Spark pour le calcul par sentiment du pourcentage de tweets
+    global_counts = (
+        tweets_with_prediction
+        .groupBy("prediction")
+        .agg(F.count("*").alias("nombre_tweets"))
+    )
+
+    total_global = global_counts.agg(
+        F.sum("nombre_tweets").alias("total")
+    )
+
+
+    global_percentage = (
+        global_counts
+        .crossJoin(total_global)
+        .withColumn(
+            "pourcentage",
+            F.round(
+                F.col("nombre_tweets") / F.col("total") * 100,
+                2
+            )
+        )
+        .orderBy("prediction")
+    ).toPandas()
+    return (global_percentage,)
+
+
+@app.cell
+def _(global_percentage):
+    # Vérification du succès de l'opération
+    global_percentage.head()
+    return
+
+
+@app.cell
+def _(
+    aes,
+    element_text,
+    geom_col,
+    geom_text,
+    ggplot,
+    global_percentage,
+    labs,
+    theme,
+    theme_minimal,
+):
+    # Visualisation graphique
+    plot_global = (
+        ggplot(
+            global_percentage,
+            aes(x="prediction", y="pourcentage", fill="prediction")
+        )
+        + geom_col(show_legend=False)
+        + geom_text(
+            aes(label="pourcentage"),
+            va="bottom",
+            format_string="{:.1f}%",
+            nudge_y=0.02 * global_percentage["pourcentage"].max(),
+            size=10
+        )
+        + labs(
+            title="Répartition des sentiments",
+            x="Sentiment",
+            y="Pourcentage"
+        )
+        + theme_minimal()
+        + theme(
+            figure_size=(8, 5),
+            plot_title=element_text(size=14, weight="bold")
+        )
+    )
+    plot_global
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Répartition des sentiments selon le tag du streaming utilisé
+    """)
+    return
+
+
+@app.cell
+def _(F, Window, tweets_with_prediction):
+    # Une ligne par hashtag
+    df_by_tag = tweets_with_prediction.withColumn(
+        "stream_tag",
+        F.explode("stream_tags")
+    )
+
+    # Comptage par hashtag et sentiment
+    df_tag_counts = (
+        df_by_tag
+        .groupBy("stream_tag", "prediction")
+        .agg(F.count("*").alias("nombre_tweets"))
+    )
+
+    # Fenêtre : total des textes pour chaque hashtag
+    window_tag = Window.partitionBy("stream_tag")
+
+    # Calcul des pourcentages dans Spark
+    df_tag_percentages = (
+        df_tag_counts
+        .withColumn(
+            "total_tag",
+            F.sum("nombre_tweets").over(window_tag)
+        )
+        .withColumn(
+            "pourcentage",
+            F.round(
+                F.col("nombre_tweets") / F.col("total_tag") * 100,
+                2
+            )
+        )
+        .orderBy("stream_tag", "prediction")
+    )
+
+    # Conversion en Pandas uniquement après agrégation
+    pdf_tag_percentages = df_tag_percentages.toPandas()
+    return (pdf_tag_percentages,)
+
+
+@app.cell
+def _(pdf_tag_percentages):
+    # Vérification du succès de l'opération
+    pdf_tag_percentages
+    return
+
+
+@app.cell
+def _(
+    aes,
+    element_text,
+    facet_wrap,
+    geom_col,
+    geom_text,
+    ggplot,
+    labs,
+    pdf_tag_percentages,
+    theme,
+    theme_minimal,
+):
+    # Visualisation graphique
+    plot_tags = (
+        ggplot(
+            pdf_tag_percentages,
+            aes(x="prediction", y="pourcentage", fill="prediction")
+        )
+        + geom_col(show_legend=False)
+        + geom_text(
+            aes(label="pourcentage"),
+            format_string="{:.1f}%",
+            va="bottom",
+            size=8
+        )
+        + facet_wrap("~stream_tag")
+        + labs(
+            title="Répartition des sentiments par hashtag",
+            x="Sentiment",
+            y="Pourcentage des tweets (%)"
+        )
+        + theme_minimal()
+        + theme(
+            figure_size=(12, 8),
+            plot_title=element_text(size=14, weight="bold"),
+            axis_text_x=element_text(size=9),
+            strip_text=element_text(size=10, weight="bold")
+        )
+    )
+
+    plot_tags
     return
 
 
