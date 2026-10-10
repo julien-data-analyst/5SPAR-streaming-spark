@@ -45,5 +45,7 @@ COPY --from=builder /app/scripts ./scripts
 # Ensure Python output is not buffered (useful for logs in Docker)
 ENV PYTHONUNBUFFERED=1
 
+USER root
+
 # Command to start the notebook server when the container runs
 CMD ["python", "-m", "scripts.01_streaming_script"]

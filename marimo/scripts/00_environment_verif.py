@@ -39,7 +39,7 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 1. SparkSession (le premier lancement télécharge les connecteurs, ~1 min)
+    ## 1. SparkSession
     """)
     return
 
