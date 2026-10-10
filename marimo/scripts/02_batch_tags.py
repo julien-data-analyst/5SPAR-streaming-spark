@@ -240,13 +240,16 @@ def _(mo, toots_with_stream_tags):
 @app.cell
 def _(F, dropdown, typic_day_tags):
     daily_tweets_stats_choose_tag = typic_day_tags.filter(f"stream_tag = '{dropdown.value}'").select(
+        F.sum("nb_tweets").alias("somme_tweets"),
+        F.count("date").alias("nb_journees"),
+    
         # Calcul des indicateurs de statistiques pour le nombre de tweets dans une journée
         F.mean("nb_tweets").alias("moyenne_nb_tweets"),
         F.expr("percentile(nb_tweets, 0.25)").alias("Q1_nb_tweets"),
         F.expr("percentile(nb_tweets, 0.50)").alias("mediane_nb_tweets"),
         F.expr("percentile(nb_tweets, 0.75)").alias("Q3_nb_tweets"),
         F.stddev("nb_tweets").alias("ecart_type_nb_tweets"),
-    
+
         # Calcul des indicateurs de statistique pour le nombre d'offre dans une journée
         F.mean("nb_tweets_offre").alias("moyenne_nb_tweets_offre"),
         F.expr("percentile(nb_tweets_offre, 0.25)").alias("Q1_nb_tweets_offre"),
@@ -264,7 +267,7 @@ def _(daily_tweets_stats_choose_tag, dropdown, mo):
 
     markdown_stats = f"""
 
-    ## Pour le tag du {dropdown.value}
+    ## Pour le tag du {dropdown.value} avec {stats["somme_tweets"]} tweets pour {stats["nb_journees"]} journées
 
     ### 📊 Statistiques sur le nombre d'offres d'emplois par journée
 
