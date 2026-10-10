@@ -105,7 +105,7 @@ Exemple :
 docker compose -f docker-compose-dev.yml exec producer \
   python -m scripts.main \
   --mode backfill \
-  --until 2025-01-01
+  --until 2026-01-01
 ```
 
 Dans cet exemple, le producer récupère les données historiques jusqu'à la date limite définie.

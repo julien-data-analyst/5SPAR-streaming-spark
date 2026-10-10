@@ -96,6 +96,28 @@ def parse_args():
 
 # For backfill define a date min for stopping backfill (created_date : 2026-01-01T00:00:00.000Z)
 # For streaming use of maximum id conserved when doing a backfill or streaming (env vars to modify)
+def serialize_value(value):
+    """Sent the JSON value of the results if we can, else it returns None and ignore the JSON
+
+    Args:
+        value (str): JSON string to dump
+
+    Returns:
+        dict: return the JSON converted into python dictionary, else returns None
+    """
+    try:
+        return json.dumps(
+            value,
+            ensure_ascii=False,
+            default=str,
+        ).encode("utf-8")
+    except Exception:
+        print("Serialization failed")
+        print("Object type:", type(value))
+        return None
+        # print("Object:", value)
+        #raise
+    
 def main():
     """Run the Mastodon producer. 
     
@@ -133,11 +155,7 @@ def main():
     producer = KafkaProducer(
         bootstrap_servers=BOOTSTRAP,
         key_serializer=lambda k: k.encode("utf-8"),
-        value_serializer=lambda v: json.dumps(
-            v,
-            ensure_ascii=False,
-            default=str,
-        ).encode("utf-8"),
+        value_serializer=serialize_value,
         linger_ms=50,
     )
 
