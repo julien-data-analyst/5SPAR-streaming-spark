@@ -145,6 +145,55 @@ def _(nb_toots_day_of_week):
 
 
 @app.cell
+def _(nb_toots_day_of_week):
+    import seaborn as sns
+    import matplotlib.pyplot as plt
+
+    jours_pandas = nb_toots_day_of_week.toPandas()
+
+    jours_pandas["jour"] = jours_pandas["day_of_week"].map({
+        1: "Dimanche",
+        2: "Lundi",
+        3: "Mardi",
+        4: "Mercredi",
+        5: "Jeudi",
+        6: "Vendredi",
+        7: "Samedi"
+    })
+
+    fig_jours, ax_jours = plt.subplots(figsize=(10, 5))
+
+    sns.barplot(
+        data=jours_pandas,
+        x="jour",
+        y="nb_tweets",
+        order=["Lundi", "Mardi", "Mercredi", "Jeudi",
+               "Vendredi", "Samedi", "Dimanche"],
+        color="steelblue",
+        ax=ax_jours
+    )
+
+    ax_jours.set_title("Nombre de publications Mastodon par jour de la semaine")
+    ax_jours.set_xlabel("Jour de la semaine")
+    ax_jours.set_ylabel("Nombre de publications")
+
+    plt.tight_layout()
+
+    fig_jours
+    return plt, sns
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Analyse
+
+    Ce graphique permet d'identifier les jours de la semaine où les publications Mastodon sont les plus nombreuses et d'observer les variations d'activité selon les jours.
+    """)
+    return
+
+
+@app.cell
 def _(nb_toots_day_of_week, write_table):
     # Ecrire le résultat dans une table analytique
     write_table(nb_toots_day_of_week, "day_of_week_tweets", "overwrite")
@@ -182,6 +231,42 @@ def _(nb_toots_month):
 
 
 @app.cell
+def _(nb_toots_month, plt, sns):
+    mois_pandas = nb_toots_month.toPandas()
+
+    fig_mois, ax_mois = plt.subplots(figsize=(10, 5))
+
+    sns.lineplot(
+        data=mois_pandas,
+        x="month",
+        y="nb_tweets",
+        marker="o",
+        ax=ax_mois
+    )
+
+    ax_mois.set_title("Nombre de publications Mastodon par mois")
+    ax_mois.set_xlabel("Mois")
+    ax_mois.set_ylabel("Nombre de publications")
+    ax_mois.set_xticks(range(1, 13))
+    ax_mois.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+
+    fig_mois
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Analyse
+
+    Ce graphique présente l'évolution mensuelle des publications Mastodon. Il permet d'identifier les mois les plus actifs et d'observer les variations du volume de publications au cours de l'année.
+    """)
+    return
+
+
+@app.cell
 def _(nb_toots_month, write_table):
     # Ecriture du résultat dans une table analytique SQL
     write_table(nb_toots_month, "month_tweets", "overwrite")
@@ -206,6 +291,16 @@ def _(F, toots):
 def _(distinct_data_account):
     nb_account = distinct_data_account.collect()[0][0]
     return (nb_account,)
+
+
+@app.cell
+def _(mo, nb_account):
+    mo.stat(
+        value=str(nb_account),
+        label="Utilisateurs distincts dans le domaine de la Data",
+        bordered=True
+    )
+    return
 
 
 @app.cell(hide_code=True)
@@ -250,6 +345,16 @@ def _(F, toots_with_stream_tags):
 @app.cell
 def _(offres_emplois):
     offres_emplois.show()
+    return
+
+
+@app.cell
+def _(mo, nb_offres_emplois):
+    mo.stat(
+        value=str(nb_offres_emplois.first()["effectif"]),
+        label="Nombre total d'offres d'emploi Data",
+        bordered=True
+    )
     return
 
 
@@ -325,6 +430,41 @@ def _(nb_offres_emplois_par_mois):
 
 
 @app.cell
+def _(nb_offres_emplois_par_mois, plt, sns):
+    offres_pandas = nb_offres_emplois_par_mois.toPandas()
+
+    fig_offres, ax_offres = plt.subplots(figsize=(10, 5))
+
+    sns.barplot(
+        data=offres_pandas,
+        x="month",
+        y="nb_tweets",
+        order=list(range(1, 13)),
+        color="steelblue",
+        ax=ax_offres
+    )
+
+    ax_offres.set_title("Répartition mensuelle des offres d'emploi Data")
+    ax_offres.set_xlabel("Mois")
+    ax_offres.set_ylabel("Nombre d'offres d'emploi")
+
+    plt.tight_layout()
+
+    fig_offres
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Analyse
+
+    Ce graphique montre la répartition des offres d'emploi Data publiées sur Mastodon selon les mois. Il permet d'identifier les périodes où les offres sont les plus nombreuses et d'observer les variations mensuelles du recrutement dans notre jeu de données.
+    """)
+    return
+
+
+@app.cell
 def _(nb_offres_emplois_par_mois, write_table):
     # Ecriture du résultat dans une table analytique SQL
     write_table(nb_offres_emplois_par_mois, "month_offer", "overwrite")
@@ -358,6 +498,58 @@ def _(typic_day_toots):
     return
 
 
+@app.cell
+def _(plt, sns, typic_day_toots):
+    journee_pandas = typic_day_toots.toPandas()
+    journee_pandas = journee_pandas.sort_values("date")
+
+    fig_journee, ax_journee = plt.subplots(figsize=(12, 5))
+
+    sns.lineplot(
+        data=journee_pandas,
+        x="date",
+        y="nb_tweets",
+        label="Total des publications",
+        ax=ax_journee
+    )
+
+    sns.lineplot(
+        data=journee_pandas,
+        x="date",
+        y="nb_tweets_offre",
+        label="Publications liées aux offres d'emploi",
+        ax=ax_journee
+    )
+
+    ax_journee.set_title("Évolution quotidienne des publications Mastodon")
+    ax_journee.set_xlabel("Date")
+    ax_journee.set_ylabel("Nombre de publications")
+    ax_journee.tick_params(axis="x", rotation=45)
+    ax_journee.legend()
+
+    plt.tight_layout()
+
+    fig_journee
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Analyse
+
+    Ce graphique permet de comparer l'évolution quotidienne du nombre total de publications Mastodon avec celle des publications liées aux offres d'emploi Data.
+
+    Il met en évidence les variations d'activité d'un jour à l'autre et permet de repérer les périodes où les publications sont les plus nombreuses.
+    """)
+    return
+
+
+@app.cell
+def _():
+    return
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -377,7 +569,7 @@ def _(F, typic_day_toots):
         F.expr("percentile(nb_tweets, 0.50)").alias("mediane_nb_tweets"),
         F.expr("percentile(nb_tweets, 0.75)").alias("Q3_nb_tweets"),
         F.stddev("nb_tweets").alias("ecart_type_nb_tweets"),
-    
+
         # Calcul des indicateurs de statistique pour le nombre d'offre dans une journée
         F.mean("nb_tweets_offre").alias("moyenne_nb_tweets_offre"),
         F.expr("percentile(nb_tweets_offre, 0.25)").alias("Q1_nb_tweets_offre"),
@@ -439,6 +631,38 @@ def _(F, toots_with_stream_tags):
         .agg(F.count("tweet_id").alias("nb_tweets"))
     )
     return (stream_tag_effectif,)
+
+
+@app.cell
+def _(stream_tag_effectif):
+    stream_tag_effectif.printSchema()
+    stream_tag_effectif.show()
+    return
+
+
+@app.cell
+def _(plt, sns, stream_tag_effectif):
+    tags_pandas = stream_tag_effectif.toPandas()
+
+    fig_tags, ax_tags = plt.subplots(figsize=(9, 5))
+
+    sns.barplot(
+        data=tags_pandas,
+        x="stream_tag_keys",
+        y="nb_tweets",
+        order=[1, 2, 3, 4],
+        color="steelblue",
+        ax=ax_tags
+    )
+
+    ax_tags.set_title("Nombre de publications selon le nombre de tags")
+    ax_tags.set_xlabel("Nombre de tags de streaming")
+    ax_tags.set_ylabel("Nombre de publications")
+
+    plt.tight_layout()
+
+    fig_tags
+    return
 
 
 @app.cell
