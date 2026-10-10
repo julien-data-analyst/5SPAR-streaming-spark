@@ -437,4 +437,5 @@ Kafka Consumer
 Vérification des messages
 ```
 
-Une fois cette étape validée, le consumer Kafka de test pourra être remplacé par **Spark Structured Streaming**, qui assurera le traitement des données avant leur insertion dans PostgreSQL.
+Une fois cette étape validée, 
+le consumer Kafka de test pourra être remplacé par **Spark Structured Streaming**, qui assurera le traitement des données avant leur insertion dans PostgreSQL.
