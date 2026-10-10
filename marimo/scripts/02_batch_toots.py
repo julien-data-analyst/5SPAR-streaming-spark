@@ -188,7 +188,7 @@ def _(mo):
     mo.md(r"""
     ### Analyse
 
-    Ce graphique permet d'identifier les jours de la semaine où les publications Mastodon sont les plus nombreuses et d'observer les variations d'activité selon les jours.
+    On peut observer qu'il y a plus de publications dans les jours de travail (Lundi à Vendredi) que le week-end.
     """)
     return
 
@@ -261,7 +261,7 @@ def _(mo):
     mo.md(r"""
     ### Analyse
 
-    Ce graphique présente l'évolution mensuelle des publications Mastodon. Il permet d'identifier les mois les plus actifs et d'observer les variations du volume de publications au cours de l'année.
+    Ce graphique présente l'évolution mensuelle des publications Mastodon. Il permet d'identifier les mois les plus actifs et d'observer les variations du volume de publications au cours de l'année. On voit que le mois de septembre contient beaucoup de tweets contrairement aux autres années.
     """)
     return
 
@@ -349,16 +349,6 @@ def _(offres_emplois):
 
 
 @app.cell
-def _(mo, nb_offres_emplois):
-    mo.stat(
-        value=str(nb_offres_emplois.first()["effectif"]),
-        label="Nombre total d'offres d'emploi Data",
-        bordered=True
-    )
-    return
-
-
-@app.cell
 def _(offres_emplois, write_table):
     # Ecriture du résultat dans une table analytique SQL
     write_table(offres_emplois, "jobs_tweets_mastodon", "overwrite")
@@ -385,6 +375,16 @@ def _(F, offres_emplois):
 @app.cell
 def _(nb_offres_emplois):
     nb_offres_emplois.show()
+    return
+
+
+@app.cell
+def _(mo, nb_offres_emplois):
+    mo.stat(
+        value=str(nb_offres_emplois.first()["effectif"]),
+        label="Nombre total d'offres d'emploi Data",
+        bordered=True
+    )
     return
 
 
@@ -459,7 +459,7 @@ def _(mo):
     mo.md(r"""
     ### Analyse
 
-    Ce graphique montre la répartition des offres d'emploi Data publiées sur Mastodon selon les mois. Il permet d'identifier les périodes où les offres sont les plus nombreuses et d'observer les variations mensuelles du recrutement dans notre jeu de données.
+    Ce graphique montre la répartition des offres d'emploi Data publiées sur Mastodon selon les mois. Il permet d'identifier les périodes où les offres sont les plus nombreuses et d'observer les variations mensuelles du recrutement dans notre jeu de données. On observe notamment que la plupart des offres d'emplois sont de septembre et octobre.
     """)
     return
 
@@ -542,11 +542,6 @@ def _(mo):
 
     Il met en évidence les variations d'activité d'un jour à l'autre et permet de repérer les périodes où les publications sont les plus nombreuses.
     """)
-    return
-
-
-@app.cell
-def _():
     return
 
 

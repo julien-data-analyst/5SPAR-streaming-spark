@@ -103,7 +103,7 @@ def _(mo):
     mo.md(r"""
     ### Analyse
 
-    Le graphique montre que **hackaday, spiritul et feed** sont les utilisateurs les plus actifs. L'activité est donc concentrée sur quelques comptes qui publient davantage que les autres.
+    Le graphique montre que **hackaday, ppcland et sponce1** sont les utilisateurs les plus actifs. L'activité est donc concentrée sur quelques comptes qui publient davantage que les autres.
     """)
     return
 
@@ -245,11 +245,6 @@ def _(comparaison_users, plt, sns):
     plt.tight_layout()
 
     fig3
-    return
-
-
-@app.cell
-def _():
     return
 
 

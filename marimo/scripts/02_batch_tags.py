@@ -45,14 +45,45 @@ def _(mo):
 @app.cell
 def _():
     import time
+    import pandas as pd
     from pyspark.sql import functions as F
+    from pyspark.sql.window import Window
     from pyspark.sql.types import (StructType, StructField, StringType, IntegerType, TimestampType, LongType,
                                    BooleanType, ArrayType)
     from utils.mastodon_utils import (get_spark, read_table, write_table,
                                   KAFKA_BOOTSTRAP, TOPIC, CHECKPOINT_DIR, stop_all_streams, JDBC_PROPS, JDBC_URL, active_streams, write_result_into_console)
+    from plotnine import (
+        ggplot,
+        aes,
+        geom_col,
+        geom_text,
+        coord_flip,
+        facet_wrap,
+        labs,
+        theme_minimal,
+        theme,
+        element_text
+    )
 
     spark = get_spark("batch-tags-mastodon", shuffle_partitions=4)
-    return F, read_table, spark, write_table
+    return (
+        F,
+        Window,
+        aes,
+        coord_flip,
+        element_text,
+        facet_wrap,
+        geom_col,
+        geom_text,
+        ggplot,
+        labs,
+        pd,
+        read_table,
+        spark,
+        theme,
+        theme_minimal,
+        write_table,
+    )
 
 
 @app.cell
@@ -104,7 +135,94 @@ def _(toots_nb_by_tag, write_table):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 1.2 Table analytique pour compter par tag stream le nombre de tweets
+    Faisons maintenant la visualisation graphique.
+    """)
+    return
+
+
+@app.cell
+def _(F, pd, toots_nb_by_tag):
+    top_10_tags = (
+        toots_nb_by_tag
+        .orderBy(F.desc("nb_tweets"))
+        .limit(10)
+    )
+
+    # Conversion en Pandas pour plotnine
+    top_10_tags_pd = top_10_tags.toPandas()
+
+    # Ordonner les catégories pour le graphique
+    top_10_tags_pd["stream_tag"] = pd.Categorical(
+        top_10_tags_pd["stream_tag"],
+        categories=top_10_tags_pd.sort_values(
+            "nb_tweets"
+        )["stream_tag"].tolist(),
+        ordered=True
+    )
+    return (top_10_tags_pd,)
+
+
+@app.cell
+def _(
+    aes,
+    coord_flip,
+    element_text,
+    geom_col,
+    geom_text,
+    ggplot,
+    labs,
+    theme,
+    theme_minimal,
+    top_10_tags_pd,
+):
+    graph_top_10_tags = (
+        ggplot(
+            top_10_tags_pd,
+            aes(
+                x="stream_tag",
+                y="nb_tweets"
+            )
+        )
+        + geom_col(fill="#377EB8", width=0.7)
+        + geom_text(
+            aes(label="nb_tweets"),
+            ha="left",
+            nudge_y=0.3,
+            size=9
+        )
+        + coord_flip()
+        + labs(
+            title="Top 10 des tags les plus utilisés",
+            subtitle="Nombre de publications par tag",
+            x="Tag",
+            y="Nombre de publications"
+        )
+        + theme_minimal()
+        + theme(
+            figure_size=(12, 7),
+            plot_title=element_text(size=16, weight="bold"),
+            axis_text=element_text(size=10)
+        )
+    )
+
+    graph_top_10_tags
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Commentaire :
+
+    On observe dans le top 3 des tags utilisés pour la capture de tweets sont **dataviz, dataengineering et bigdata** avec dataviz qui a à lui seul plus de 1 500 tweets le concernant.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 1.2 Table analytique pour compter par couple de tags le nombre de tweets
     """)
     return
 
@@ -131,6 +249,97 @@ def _(toots_stream_tag_by_tag):
 def _(toots_stream_tag_by_tag, write_table):
     # Ecriture du résultat dans une table analytique SQL
     write_table(toots_stream_tag_by_tag, "tag_couple_tweets", "overwrite")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    Faisons maintenant la visualisation graphique en observant les trois tags les plus utilisés par stream tag.
+    """)
+    return
+
+
+@app.cell
+def _(F, Window, toots_stream_tag_by_tag):
+    # Avec windows, cela permets de donner un rang à nos tags par stream_tag et de filtrer sur les tags les plus utilisés
+    window_tags = (
+        Window
+        .partitionBy("stream_tag")
+        .orderBy(
+            F.desc("nb_tweets"),
+            F.asc("tag")
+        )
+    )
+
+    top_3_by_stream_tag = (
+        toots_stream_tag_by_tag
+        .withColumn(
+            "rang",
+            F.row_number().over(window_tags)
+        )
+        .filter(F.col("rang") <= 3)
+    )
+
+    top_3_by_stream_tag_pd = top_3_by_stream_tag.toPandas()
+    return (top_3_by_stream_tag_pd,)
+
+
+@app.cell
+def _(
+    aes,
+    element_text,
+    facet_wrap,
+    geom_col,
+    geom_text,
+    ggplot,
+    labs,
+    theme,
+    theme_minimal,
+    top_3_by_stream_tag_pd,
+):
+    graph_top_3_by_stream_tag = (
+        ggplot(
+            top_3_by_stream_tag_pd,
+            aes(
+                x="tag",
+                y="nb_tweets"
+            )
+        )
+        + geom_col(fill="#4DAF4A", width=0.7)
+        + geom_text(
+            aes(label="nb_tweets"),
+            va="bottom",
+            nudge_y=0.3,
+            size=8
+        )
+        + facet_wrap(
+            "~stream_tag",
+            scales="free"
+        )
+        + labs(
+            title="Top 3 des tags par stream_tag",
+            subtitle="Les trois tags les plus fréquents dans chaque catégorie",
+            x="Tag associé",
+            y="Nombre de publications"
+        )
+        + theme_minimal()
+        + theme(
+            figure_size=(14, 9),
+            plot_title=element_text(size=16, weight="bold"),
+            axis_text_x=element_text(
+                rotation=45,
+                ha="right",
+                size=8
+            ),
+            strip_text=element_text(
+                size=10,
+                weight="bold"
+            )
+        )
+    )
+
+    graph_top_3_by_stream_tag
     return
 
 
@@ -200,6 +409,91 @@ def _(user_by_tags, write_table):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    Faisons maintenant la visualisation graphique.
+    """)
+    return
+
+
+@app.cell
+def _(F, user_by_tags):
+    top_10_users_by_tag = (
+        user_by_tags
+        .orderBy(
+            F.desc("nb_users"),
+            F.asc("stream_tag")
+        )
+        .limit(10)
+    )
+
+    top_10_users_by_tag_pd = top_10_users_by_tag.toPandas()
+    return (top_10_users_by_tag_pd,)
+
+
+@app.cell
+def _(top_10_users_by_tag_pd):
+    top_10_users_by_tag_pd
+    return
+
+
+@app.cell
+def _(
+    aes,
+    coord_flip,
+    element_text,
+    geom_col,
+    geom_text,
+    ggplot,
+    labs,
+    pd,
+    theme,
+    theme_minimal,
+    top_10_users_by_tag_pd,
+):
+    top_10_users_by_tag_pd["stream_tag"] = pd.Categorical(
+        top_10_users_by_tag_pd["stream_tag"],
+        categories=top_10_users_by_tag_pd.sort_values(
+            "nb_users"
+        )["stream_tag"].tolist(),
+        ordered=True
+    )
+
+    graph_top_10_users_by_tag = (
+        ggplot(
+            top_10_users_by_tag_pd,
+            aes(
+                x="stream_tag",
+                y="nb_users"
+            )
+        )
+        + geom_col(fill="#984EA3", width=0.7)
+        + geom_text(
+            aes(label="nb_users"),
+            ha="left",
+            nudge_y=0.3,
+            size=9
+        )
+        + coord_flip()
+        + labs(
+            title="Top 10 des tags par nombre d'utilisateurs",
+            subtitle="Nombre de comptes distincts ayant utilisé chaque tag",
+            x="Tag",
+            y="Nombre d'utilisateurs"
+        )
+        + theme_minimal()
+        + theme(
+            figure_size=(12, 7),
+            plot_title=element_text(size=16, weight="bold"),
+            axis_text=element_text(size=10)
+        )
+    )
+
+    graph_top_10_users_by_tag
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ## 1.5 Journée typique de tweets par stream_tag
     """)
     return
@@ -242,7 +536,7 @@ def _(F, dropdown, typic_day_tags):
     daily_tweets_stats_choose_tag = typic_day_tags.filter(f"stream_tag = '{dropdown.value}'").select(
         F.sum("nb_tweets").alias("somme_tweets"),
         F.count("date").alias("nb_journees"),
-    
+
         # Calcul des indicateurs de statistiques pour le nombre de tweets dans une journée
         F.mean("nb_tweets").alias("moyenne_nb_tweets"),
         F.expr("percentile(nb_tweets, 0.25)").alias("Q1_nb_tweets"),
