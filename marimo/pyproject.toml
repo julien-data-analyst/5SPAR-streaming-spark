@@ -10,5 +10,7 @@ dependencies = [
     "matplotlib",
     "pyspark-client==4.1.1",
     "marimo",
+
+    "seaborn",
     "plotnine" # Python notebook
 ] # Some standard libairies
