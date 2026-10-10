@@ -121,6 +121,11 @@ docker compose -f docker-compose-prod.yml down
 Les notebooks du projet doivent être exécutés dans l'ordre suivant afin de vérifier d'abord l'environnement, 
 puis de réaliser les différents traitements batch avec la création, l'application du modèle créé.
 
+Pour accéder aux notebooks, veuillez cliquer sur l'addresse suivante :
+
+http://localhost:8081/
+
+
 ## Ordre recommandé
 
 ```text
@@ -164,10 +169,7 @@ puis de réaliser les différents traitements batch avec la création, l'applica
         │ Construction du modèle 
         │ et des tags associés
         │
-        ├── tag_stream_nb_tweets
-        ├── tag_couple_tweets
-        ├── tag_stream_jobs
-        └── steam_tag_nb_users
+        ├── mastodon_tweets_sentiment
         │
         ▼
 PostgreSQL
