@@ -1,10 +1,11 @@
-# Mastodon Streaming avec PySpark et Kafka
+# 5SPAR — Projet de construction d'une architecture Spark end-to-end pour les données Mastodon
+
+Vous trouverez ici toutes les informations concernant le spark streaming.
 
 ## 1. Présentation du projet
 
-Ce projet met en place un pipeline de traitement de données en streaming à partir de messages Mastodon transmis via Apache Kafka.
-
-Le traitement est réalisé avec PySpark Structured Streaming. Les données reçues sont analysées, nettoyées et transformées avant d'être enregistrées dans une base de données SQL.
+Le traitement est réalisé avec PySpark Structured Streaming. 
+Les données reçues sont analysées, nettoyées et transformées avant d'être enregistrées dans une base de données SQL.
 
 Le pipeline produit trois types de résultats :
 
