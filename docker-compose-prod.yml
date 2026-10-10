@@ -1,0 +1,169 @@
+services:
+
+  # Service pour les notebooks (notamment l'exécution du batch, ml et des visualisations graphiques)
+  marimo:
+    build:
+      context: ./marimo
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION}
+    container_name: marimo-spark-dev
+    command: marimo edit --no-token --host 0.0.0.0 -p 8080
+    env_file:
+      - .env
+    volumes:
+      - ./marimo/data:/data
+    working_dir: /app/scripts
+    ports:
+      - "${MARIMO_PORT}:8080"
+    environment:
+      SPARK_REMOTE: sc://spark-worker:15002 # Permet de se connecter au client
+    stdin_open: true
+    tty: true
+
+  spark:
+    build:
+      context: ./spark 
+    image: apache/spark:4.1.1-python3
+
+    command: # Installer les packages nécessaires pour spark
+      - /opt/spark/sbin/start-connect-server.sh
+
+    volumes:
+     - ./marimo/data:/data
+    container_name: spark-worker
+    environment:
+      SPARK_NO_DAEMONIZE: "true"        # garde le process au premier plan
+      PYSPARK_PYTHON: /usr/bin/python3
+
+      PYTHONPATH: >-
+        /opt/spark/python/lib/pyspark.zip:
+        /opt/spark/python/lib/py4j-0.10.9.9-src.zip
+      
+      SPARK_TIMEOUT: 120
+
+    ports:
+      - "${SPARK_UI}:4040"     # Spark UI
+      - "${SPARK_CONNECT_PORT}:15002"   # Spark Connect
+  
+  # Base de données PostgreSQL où on sauvegarde ce qu'on a collecté et calculé
+  postgres:
+    image: postgres:16
+    container_name: postgres
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+  
+  # Service pour la capture des données en temps réel
+  kafka:
+    image: apache/kafka:3.8.0
+    container_name: kafka
+    ports:
+      - "${KAFKA_PORT}:9094"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"   # Topic created by the user in dev mode
+  
+  # Initialisation pour la création d'un topic Kafka de mastodon_stream
+  kafka-init:
+    image: apache/kafka:3.8.0
+    container_name: kafka-init
+    depends_on:
+      kafka:
+        condition: service_started
+    env_file:
+      - .env
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        echo "Attente du démarrage de Kafka..."
+        until /opt/kafka/bin/kafka-topics.sh \
+          --bootstrap-server kafka:9092 \
+          --list >/dev/null 2>&1; do
+          sleep 2
+        done
+
+        echo "Création du topic $${KAFKA_TOPIC}..."
+        /opt/kafka/bin/kafka-topics.sh \
+          --bootstrap-server kafka:9092 \
+          --create \
+          --if-not-exists \
+          --topic "$${KAFKA_TOPIC}" \
+          --partitions "$${KAFKA_PARTITIONS}" \
+          --replication-factor "$${KAFKA_REPLICATION_FACTOR}"
+
+        echo "Topics Kafka disponibles :"
+        /opt/kafka/bin/kafka-topics.sh \
+          --bootstrap-server kafka:9092 \
+          --list
+    restart: "no"
+  
+  # Service pour lancer le streaming mastodon
+  producer:
+    build:
+      context: ./kafka/producer
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      
+      # Exécuter le backfill avant de lancer le streaming
+      producer-backfill:
+        condition: service_completed_successfully
+
+    command: ["python", "-m", "scripts.main", "--mode", "stream"]
+
+  # Service spark streaming pour capturer les données du Kafka
+  streaming:
+    build:
+      context: ./spark/streaming
+      dockerfile: Dockerfile
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION}
+    env_file:
+      - .env
+    volumes:
+      - ./marimo/data:/data
+    container_name: streaming_spark
+
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+
+    environment:
+      SPARK_REMOTE: sc://spark-worker:15002 # Permet de se connecter au client
+
+    command: ["python", "-m", "scripts.01_streaming_script"]
+
+  # Service backfill à ne lancer seulement qu'une seule fois pour capturer tous l'historique des tweets
+  producer-backfill:
+    build:
+      context: ./kafka/producer
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+
+    command: ["python", "-m", "scripts.main", "--mode", "backfill", "--until", "${BACKFILL_DATE}"]
+    restart: "no"
+
+volumes:
+  pgdata:
