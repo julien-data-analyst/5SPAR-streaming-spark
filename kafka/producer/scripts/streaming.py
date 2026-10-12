@@ -33,7 +33,7 @@ def make_update_callback(producer: KafkaProducer, topic: str, tag: str) -> Calla
         toot_id = str(status["id"])
         message = {
             "stream_tag": tag,
-            "status": status,
+            "value": status,
         }
         
         producer.send(topic, key=toot_id, value=message)

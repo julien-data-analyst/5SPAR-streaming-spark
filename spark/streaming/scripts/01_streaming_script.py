@@ -57,7 +57,8 @@ schema = StructType([
 parsed = (
     raw.withColumn("value", F.col("value").cast("string"))
         .select(F.from_json(F.col("value"), schema).alias("data"),
-                F.col("offset").alias("kafka_offset"),                                       F.col("partition").alias("kafka_partition"),
+                F.col("offset").alias("kafka_offset"),                                       
+                F.col("partition").alias("kafka_partition"),
                 F.current_timestamp().alias("ingest_time"))
         .select("data.*", "kafka_offset", "kafka_partition", "ingest_time")
 )
